@@ -3,15 +3,16 @@ import FlickCore
 import os
 
 /// Watches the trackpad's scroll events through a session event tap and
-/// reports two-finger swipes that start on a window's title bar, swallowing
-/// their events so the window never scrolls. A swipe reports whether ⌘ was
-/// held as the fingers lifted.
+/// reports two-finger swipes that start on a window's title bar, or with ⌘
+/// held as they start, anywhere in the window, swallowing their events so the
+/// window never scrolls. A swipe reports whether it was a ⌘ swipe.
 @MainActor
 final class SwipeTap {
     var isEnabled = true
 
     private var recognizer: SwipeRecognizer
     private var target: AppWindow?
+    private var command = false
     private var port: CFMachPort?
     private let onSwipe: (AppWindow, SwipeDirection, _ command: Bool) -> Void
     private let logger = Logger(subsystem: "info.junz.flick", category: "gesture")
@@ -65,11 +66,13 @@ final class SwipeTap {
         ) {
             target = nil
             // Scrolls with other modifiers (zoom, horizontal scroll) keep
-            // their meaning; ⌘ picks the display moves.
+            // their meaning.
             guard isEnabled, event.flags.isDisjoint(with: [
                 .maskAlternate, .maskControl, .maskShift,
             ]) else { return false }
-            target = AppWindow.titleBar(at: event.location)
+            command = event.flags.contains(.maskCommand)
+            target = command ? AppWindow.window(at: event.location)
+                : AppWindow.titleBar(at: event.location)
             return target != nil
         }
 
@@ -80,10 +83,10 @@ final class SwipeTap {
             return false
         case .fire(let direction):
             if let target {
-                let command = event.flags.contains(.maskCommand)
+                let command = command
                 logger.info("""
                     swipe \(command ? "⌘" : "", privacy: .public)\(direction.rawValue, privacy: .public) \
-                    on \(target.appName, privacy: .public)'s title bar \
+                    on \(target.appName, privacy: .public)'s \(command ? "window" : "title bar", privacy: .public) \
                     (natural scrolling \(scroll.isDirectionInvertedFromDevice, privacy: .public))
                     """)
                 // Outside the callback, which must return quickly.

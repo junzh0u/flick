@@ -37,19 +37,20 @@ public enum MomentumPhase: Sendable, Equatable {
 public enum Verdict: Equatable, Sendable {
     /// Deliver it as usual.
     case pass
-    /// Drop it: it belongs to a swipe on a title bar.
+    /// Drop it: it belongs to a swipe Flick handles.
     case swallow
     /// Drop it, and the swipe it ends went this way.
     case fire(SwipeDirection)
 }
 
-/// Recognizes two-finger swipes that start on a window's title bar from the
-/// trackpad's stream of phased scroll events.
+/// Recognizes two-finger swipes from the trackpad's stream of phased scroll
+/// events, among the gestures that start where Flick acts (`startsOnTarget`:
+/// a window's title bar, or with ⌘ held, anywhere in the window).
 ///
 /// A swipe is decided when its fingers lift, from the overall finger travel,
 /// so it can still be steered or abandoned mid-swipe. All of its events are
-/// swallowed, including the momentum scroll after it, so the window under the
-/// title bar never scrolls; gestures starting elsewhere pass untouched.
+/// swallowed, including the momentum scroll after it, so the window under it
+/// never scrolls; other gestures pass untouched.
 public struct SwipeRecognizer: Sendable {
     /// Finger travel, in scroll points along the dominant axis, a swipe needs.
     public var threshold: Double
@@ -70,11 +71,11 @@ public struct SwipeRecognizer: Sendable {
 
     /// Feeds one trackpad scroll event. `deltaX` and `deltaY` are its
     /// scrolling deltas and `inverted` its isDirectionInvertedFromDevice
-    /// ("natural scrolling"). `startsOnTitleBar` is asked once per gesture, on
+    /// ("natural scrolling"). `startsOnTarget` is asked once per gesture, on
     /// its first event.
     public mutating func handle(phase: ScrollPhase, momentum: MomentumPhase,
                                 deltaX: Double, deltaY: Double, inverted: Bool,
-                                startsOnTitleBar: () -> Bool) -> Verdict {
+                                startsOnTarget: () -> Bool) -> Verdict {
         // With natural scrolling the content follows the fingers, so the
         // deltas point the way they moved (x right, y down); otherwise the
         // opposite way.
@@ -90,7 +91,7 @@ public struct SwipeRecognizer: Sendable {
             case .ignoring where phase == .began:
                 return .pass
             default:
-                if startsOnTitleBar() {
+                if startsOnTarget() {
                     state = .tracking(x: x, y: y)
                     return .swallow
                 }

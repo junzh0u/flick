@@ -3,11 +3,10 @@ import FlickCore
 import os
 import ServiceManagement
 
-/// Which arrangement each swipe performs — swiping down minimizes — and with ⌘
-/// held, which way it moves the window between displays; a swipe without one
-/// does nothing.
+/// Which arrangement each swipe performs, on a title bar or with ⌘ held
+/// anywhere in a window. Swiping down instead minimizes, or with ⌘, moves the
+/// window to the next display.
 let actions: [SwipeDirection: Action] = [.up: .fill, .left: .left, .right: .right]
-let displaySteps: [SwipeDirection: DisplayStep] = [.left: .previous, .right: .next]
 
 enum Defaults {
     static let enabled = "Enabled"
@@ -101,7 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         tap.isEnabled = defaults.bool(forKey: Defaults.enabled)
         if tap.start() {
             self.tap = tap
-            statusLine.title = "Swipe on a title bar: ↑ fill, ↓ minimize, ← → split, ⌘← ⌘→ display"
+            statusLine.title = "Swipe on a title bar: ↑ fill, ← → split, ↓ minimize; with ⌘ anywhere in a window, ↓ next display"
             logger.notice("watching the trackpad")
         } else {
             statusLine.title = "Couldn't watch the trackpad"
@@ -112,10 +111,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func swiped(_ target: AppWindow, _ direction: SwipeDirection, command: Bool) {
         let name: String
         let decide: () throws(ArrangeError) -> Arrangement
-        if command {
-            guard let step = displaySteps[direction] else { return }
-            name = "\(step.rawValue) display"
-            decide = { () throws(ArrangeError) in try arrangement(step, for: target, stageWait: 0.1) }
+        if command && direction == .down {
+            name = "next display"
+            decide = { () throws(ArrangeError) in try arrangement(.next, for: target, stageWait: 0.1) }
         } else if direction == .down {
             name = "minimize"
             decide = { minimizing(target) }
@@ -134,7 +132,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let arrangement = try decide()
             logger.info("\(name, privacy: .public): \(arrangement.summary, privacy: .public)")
             let duration = UserDefaults.standard.double(forKey: Defaults.duration)
-            let keepPointer = staysOnScreen
+            // A ⌘ swipe works anywhere in the window, so the pointer stays put.
+            let keepPointer = staysOnScreen && !command
                 && UserDefaults.standard.bool(forKey: Defaults.pointerOnTitleBar)
             worker.async {
                 do {

@@ -108,6 +108,18 @@ public struct AppWindow: @unchecked Sendable {
     /// top-left coordinates like CGEvent's, if it isn't covered there.
     @MainActor
     public static func titleBar(at location: CGPoint) -> AppWindow? {
+        window(at: location, inTitleBar: true)
+    }
+
+    /// The standard window at `location`, anywhere in it, if it isn't covered
+    /// there.
+    @MainActor
+    public static func window(at location: CGPoint) -> AppWindow? {
+        window(at: location, inTitleBar: false)
+    }
+
+    @MainActor
+    private static func window(at location: CGPoint, inTitleBar: Bool) -> AppWindow? {
         let systemWide = AXUIElementCreateSystemWide()
         // Asked from the event tap, which must not stall on a hung app.
         AXUIElementSetMessagingTimeout(systemWide, 0.1)
@@ -118,9 +130,11 @@ public struct AppWindow: @unchecked Sendable {
               string(window, kAXSubroleAttribute) == kAXStandardWindowSubrole,
               copy(window, "AXFullScreen") as? Bool != true,
               let windowFrame = FlickCore.frame(of: window) else { return nil }
-        let close = element(window, kAXCloseButtonAttribute).flatMap { FlickCore.frame(of: $0) }
-        guard titleBarBand(window: windowFrame, closeButton: close).contains(location) else {
-            return nil
+        if inTitleBar {
+            let close = element(window, kAXCloseButtonAttribute).flatMap { FlickCore.frame(of: $0) }
+            guard titleBarBand(window: windowFrame, closeButton: close).contains(location) else {
+                return nil
+            }
         }
 
         var pid: pid_t = 0
