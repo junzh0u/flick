@@ -10,6 +10,8 @@ A menu-bar app for macOS that fills, splits or minimizes a window when you swipe
 | ↓ | minimize to the Dock | minimize to the strip |
 | ⌘↓ | move to the next display, keeping its place on screen | same, within the stages |
 
+While ⌘ stays held, later ⌘ swipes keep going to the window the first one hit, wherever the pointer is, so you can split a window, send it to the next display and fill it there in one go. Releasing ⌘ lets go of it.
+
 Displays are ordered left to right, wrapping around. A moved window keeps its position and size relative to the area windows are arranged in — the visible frame, or with Stage Manager on, the stage — so a filled window stays filled, a left half stays a left half, and a window in the top-right third stays there.
 
 With Stage Manager off, Flick presses macOS's own Window-menu commands, so windows tile exactly as they would from the menu. With it on, those commands would cover the strip of recent apps, so Flick instead moves the window into the display's *stage*, the area beside the strip where macOS itself places new windows, and eases it there over 0.2 s the way native tiling animates.

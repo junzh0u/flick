@@ -6,6 +6,10 @@ import os
 /// reports two-finger swipes that start on a window's title bar, or with ⌘
 /// held as they start, anywhere in the window, swallowing their events so the
 /// window never scrolls. A swipe reports whether it was a ⌘ swipe.
+///
+/// While ⌘ stays held, every ⌘ swipe goes to the window the first one hit,
+/// wherever the pointer is, so a window can be split, filled and sent to
+/// another display in one go; releasing ⌘ lets go of it.
 @MainActor
 final class SwipeTap {
     var isEnabled = true
@@ -13,6 +17,8 @@ final class SwipeTap {
     private var recognizer: SwipeRecognizer
     private var target: AppWindow?
     private var command = false
+    /// The window ⌘ swipes go to until ⌘ is released.
+    private var commandTarget: AppWindow?
     private var port: CFMachPort?
     private let onSwipe: (AppWindow, SwipeDirection, _ command: Bool) -> Void
     private let logger = Logger(subsystem: "info.junz.flick", category: "gesture")
@@ -25,6 +31,7 @@ final class SwipeTap {
     /// Starts watching; false without Accessibility permission.
     func start() -> Bool {
         let mask = CGEventMask(1) << CGEventType.scrollWheel.rawValue
+            | CGEventMask(1) << CGEventType.flagsChanged.rawValue
         guard let port = CGEvent.tapCreate(
             tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
             eventsOfInterest: mask,
@@ -47,6 +54,9 @@ final class SwipeTap {
         switch type {
         case .scrollWheel:
             break
+        case .flagsChanged:
+            if !event.flags.contains(.maskCommand) { commandTarget = nil }
+            return true
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
             logger.notice("event tap was disabled; re-enabling")
             if let port { CGEvent.tapEnable(tap: port, enable: true) }
@@ -71,8 +81,16 @@ final class SwipeTap {
                 .maskAlternate, .maskControl, .maskShift,
             ]) else { return false }
             command = event.flags.contains(.maskCommand)
-            target = command ? AppWindow.window(at: event.location)
-                : AppWindow.titleBar(at: event.location)
+            if !command {
+                // ⌘ was released while the tap couldn't see it.
+                commandTarget = nil
+                target = AppWindow.titleBar(at: event.location)
+            } else if let held = commandTarget, held.frame != nil {
+                target = held
+            } else {
+                target = AppWindow.window(at: event.location)
+                commandTarget = target
+            }
             return target != nil
         }
 
