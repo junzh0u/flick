@@ -9,10 +9,13 @@
 //   flick minimize [--dry-run]              minimize it
 //   flick probe X Y                         is there a title bar at X Y?
 //
-// The commands act once and exit; they need Accessibility permission for
-// whatever runs them.
+// The commands act on the frontmost app's window once and exit, so a
+// keyboard remapper can bind them; they need Accessibility permission for
+// whatever runs them. A command that can't do its job plays the alert sound
+// as well as printing why, since such callers usually drop stderr.
 
 import AppKit
+import AudioToolbox
 import FlickCore
 
 let usage = """
@@ -27,6 +30,14 @@ let usage = """
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write("flick: \(message)\n".data(using: .utf8)!)
     exit(1)
+}
+
+/// fail, with the user's alert sound first.
+func failAudibly(_ message: String) -> Never {
+    let done = DispatchSemaphore(value: 0)
+    AudioServicesPlayAlertSoundWithCompletion(kSystemSoundID_UserPreferredAlert) { done.signal() }
+    _ = done.wait(timeout: .now() + 2)
+    fail(message)
 }
 
 @MainActor
@@ -52,8 +63,7 @@ func arrangeFrontmost(_ command: String, _ args: ArraySlice<String>) -> Never {
         }
     }
     guard let action else { fail(usage) }
-    guard AXIsProcessTrusted() else { fail("needs Accessibility permission") }
-    guard let target = AppWindow.frontmost() else { fail("the frontmost app has no focused window") }
+    let target = frontmostWindow()
     run(dryRun, duration) { () throws(ArrangeError) in
         try arrangement(action, for: target, stageWait: 0.25)
     }
@@ -73,8 +83,7 @@ func moveToDisplay(_ args: ArraySlice<String>) -> Never {
         }
     }
     guard let step else { fail(usage) }
-    guard AXIsProcessTrusted() else { fail("needs Accessibility permission") }
-    guard let target = AppWindow.frontmost() else { fail("the frontmost app has no focused window") }
+    let target = frontmostWindow()
     run(dryRun, 0) { () throws(ArrangeError) in try arrangement(step, for: target) }
 }
 
@@ -85,9 +94,21 @@ func minimizeFrontmost(_ args: ArraySlice<String>) -> Never {
         guard arg == "--dry-run" else { fail("unknown argument \(arg)\n\(usage)") }
         dryRun = true
     }
-    guard AXIsProcessTrusted() else { fail("needs Accessibility permission") }
-    guard let target = AppWindow.frontmost() else { fail("the frontmost app has no focused window") }
+    let target = frontmostWindow()
     run(dryRun, 0) { minimizing(target) }
+}
+
+func requireTrust() {
+    guard AXIsProcessTrusted() else { failAudibly("needs Accessibility permission") }
+}
+
+@MainActor
+func frontmostWindow() -> AppWindow {
+    requireTrust()
+    guard let target = AppWindow.frontmost() else {
+        failAudibly("the frontmost app has no focused window")
+    }
+    return target
 }
 
 func run(_ dryRun: Bool, _ duration: Double,
@@ -100,7 +121,7 @@ func run(_ dryRun: Bool, _ duration: Double,
             try perform(arrangement, duration: duration)
         }
     } catch {
-        fail(error.description)
+        failAudibly(error.description)
     }
     exit(0)
 }
@@ -110,7 +131,7 @@ func probe(_ args: ArraySlice<String>) -> Never {
     guard args.count == 2, let x = Double(args.first!), let y = Double(args.last!) else {
         fail(usage)
     }
-    guard AXIsProcessTrusted() else { fail("needs Accessibility permission") }
+    requireTrust()
     guard let target = AppWindow.titleBar(at: CGPoint(x: x, y: y)) else {
         print("no title bar at \(Int(x)) \(Int(y))")
         exit(1)

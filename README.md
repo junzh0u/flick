@@ -50,7 +50,7 @@ $FLICK minimize [--dry-run]
 $FLICK probe X Y    # is there a title bar at this point (global, top-left origin)?
 ```
 
-These need Accessibility permission for whatever runs them, such as your terminal. `--dry-run` prints the frame it would use instead of moving anything.
+These need Accessibility permission for whatever runs them, such as your terminal or a keyboard remapper. `--dry-run` prints what it would do instead of doing it. A command that can't do its job also plays the alert sound, since remappers usually drop its error message.
 
 ## Troubleshooting
 
@@ -72,6 +72,7 @@ shows each recognized swipe, the arrangement it chose, and any failure. Failures
 ```sh
 swift build
 swift test
+Tests/test-cli.zsh
 ```
 
-The gesture recognizer and geometry live in `FlickCore` and are unit-tested. The event tap, Accessibility and window movement need a real session; use the `probe` and `--dry-run` commands above to check them.
+The gesture recognizer and geometry live in `FlickCore` and are unit-tested; `Tests/test-cli.zsh` checks the command line's argument handling. The event tap, Accessibility and window movement need a real session; use the `probe` and `--dry-run` commands above to check them.
