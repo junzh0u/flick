@@ -32,12 +32,29 @@ The bundle is signed with `flick-local`, a self-signed code-signing certificate 
 
 ## Settings
 
-The menu-bar icon toggles Flick on and off, controls Launch at Login, toggles **Show Previews** (on by default), and toggles **Keep Pointer on Title Bar** (on by default): after a swipe moves a window, the pointer follows to the middle of its title bar if it ended up outside it, so the next swipe can start right away. ⌘ swipes leave the pointer where it is, since they work anywhere in the window. Two more settings are only available through `defaults`; the threshold takes effect on relaunch:
+**Settings…** in the menu-bar menu (⌘,) opens a window for all of them; the menu also toggles the first two directly:
 
-```sh
-defaults write info.junz.flick SwipeThreshold -float 50      # finger travel a swipe needs, in scroll points
-defaults write info.junz.flick AnimationDuration -float 0.2  # seconds; 0 jumps
+- **Show previews** (on): the frosted preview while a gesture is in progress.
+- **Keep pointer on title bar** (on): after a swipe moves a window, the pointer follows to the middle of its title bar if it ended up outside it, so the next swipe can start right away. ⌘ gestures leave the pointer where it is, since they work anywhere in the window.
+- **Swipe distance** (50 pt): the finger travel a swipe needs.
+- **Animation** (0.2 s): how long a window eases into place; 0 jumps. The command line uses it too, unless given `--duration`.
+- **Ignored apps**: apps whose windows gestures pass through untouched, for apps with gestures of their own.
+
+They live in `~/.config/flick/config.toml` (or under `$XDG_CONFIG_HOME`), so they can be synced and versioned with your dotfiles. Flick reloads the file whenever it changes — after a `git pull`, say. When you change a setting in the app, it rewrites only that key's line, keeping your comments and layout; a new file starts as a commented template. Keys left out take their defaults:
+
+```toml
+swipe_threshold = 50          # finger travel a swipe needs, in points (10–200)
+animation_duration = 0.2      # seconds; 0 jumps
+show_previews = true
+keep_pointer_on_title_bar = true
+excluded_apps = [
+  "com.apple.finder",
+]
 ```
+
+Flick reads the flat subset of TOML these settings need: bare keys, numbers, booleans, strings and arrays of strings, with comments. If the file has an error, Flick keeps its current settings, logs the line, and beeps rather than save over it.
+
+Two settings stay with each Mac instead: **Enabled**, the menu's quick on/off switch, and **Launch at Login**, which macOS keeps.
 
 ## Command line
 

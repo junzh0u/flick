@@ -92,6 +92,7 @@ public struct AppWindow: @unchecked Sendable {
     public let app: AXUIElement
     public let window: AXUIElement
     public let appName: String
+    public let bundleIdentifier: String?
 
     /// The focused (or else main) window of the frontmost app.
     @MainActor
@@ -101,7 +102,8 @@ public struct AppWindow: @unchecked Sendable {
         AXUIElementSetMessagingTimeout(app, 1)
         guard let window = element(app, kAXFocusedWindowAttribute)
             ?? element(app, kAXMainWindowAttribute) else { return nil }
-        return AppWindow(app: app, window: window, appName: running.localizedName ?? "?")
+        return AppWindow(app: app, window: window, appName: running.localizedName ?? "?",
+                         bundleIdentifier: running.bundleIdentifier)
     }
 
     /// The standard window whose title bar is at `location`, in global
@@ -142,8 +144,9 @@ public struct AppWindow: @unchecked Sendable {
               pid != ProcessInfo.processInfo.processIdentifier else { return nil }
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 1)
-        let name = NSRunningApplication(processIdentifier: pid)?.localizedName ?? "?"
-        return AppWindow(app: app, window: window, appName: name)
+        let running = NSRunningApplication(processIdentifier: pid)
+        return AppWindow(app: app, window: window, appName: running?.localizedName ?? "?",
+                         bundleIdentifier: running?.bundleIdentifier)
     }
 
     private static func window(containing hit: AXUIElement) -> AXUIElement? {

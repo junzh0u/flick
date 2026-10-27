@@ -1,7 +1,9 @@
 import AppKit
+import Combine
 import FlickCore
 import os
 import ServiceManagement
+import SwiftUI
 
 /// What a gesture does, on a title bar or with ⌘ held anywhere in a window:
 /// swiping ↑ fills, ← → split and ↓ moves the window to the next display;
@@ -45,17 +47,13 @@ enum Plan {
     }
 }
 
+/// The settings that stay with this Mac rather than in the synced file.
 enum Defaults {
+    /// Whether Flick is on, a quick pause from the menu.
     static let enabled = "Enabled"
-    static let threshold = "SwipeThreshold"
-    static let duration = "AnimationDuration"
-    static let pointerOnTitleBar = "KeepPointerOnTitleBar"
-    static let previews = "ShowPreviews"
 
     static func register() {
-        UserDefaults.standard.register(defaults: [
-            enabled: true, threshold: 50.0, duration: 0.2, pointerOnTitleBar: true, previews: true,
-        ])
+        UserDefaults.standard.register(defaults: [enabled: true])
     }
 }
 
@@ -68,6 +66,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var permissionTimer: Timer?
     private let preview = PreviewOverlay()
     private var splits = SplitCycle()
+    private let store = SettingsStore()
+    private var settingsWatch: AnyCancellable?
+    private var settingsWindow: NSWindow?
     private let statusLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let enabledItem = NSMenuItem(title: "Enabled", action: #selector(toggleEnabled),
                                          keyEquivalent: "")
@@ -77,10 +78,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                          action: #selector(togglePointer), keyEquivalent: "")
     private let loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLogin),
                                        keyEquivalent: "")
+    private let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettings),
+                                          keyEquivalent: ",")
+
+    private var settings: FlickSettings { store.settings }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Defaults.register()
         setUpMenu()
+        settingsWatch = store.$settings.sink { [weak self] settings in
+            MainActor.assumeIsolated { self?.tap?.apply(settings) }
+        }
         // Connect now, so the first swipe already has the stages.
         _ = StageWatcher.shared
         startWhenTrusted()
@@ -99,11 +107,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         previewItem.target = self
         pointerItem.target = self
         loginItem.target = self
+        settingsItem.target = self
         menu.addItem(enabledItem)
         menu.addItem(previewItem)
         menu.addItem(pointerItem)
         menu.addItem(loginItem)
         menu.addItem(.separator())
+        menu.addItem(settingsItem)
         menu.addItem(NSMenuItem(title: "Quit Flick", action: #selector(NSApplication.terminate(_:)),
                                 keyEquivalent: "q"))
         item.menu = menu
@@ -112,8 +122,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         enabledItem.state = UserDefaults.standard.bool(forKey: Defaults.enabled) ? .on : .off
-        previewItem.state = UserDefaults.standard.bool(forKey: Defaults.previews) ? .on : .off
-        pointerItem.state = UserDefaults.standard.bool(forKey: Defaults.pointerOnTitleBar) ? .on : .off
+        previewItem.state = settings.showPreviews ? .on : .off
+        pointerItem.state = settings.keepPointerOnTitleBar ? .on : .off
         loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
     }
 
@@ -138,11 +148,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func startTap() {
-        let defaults = UserDefaults.standard
-        let tap = SwipeTap(threshold: defaults.double(forKey: Defaults.threshold),
-                           onProgress: { [weak self] in self?.preview($0, $1, hold: $2) },
+        let tap = SwipeTap(onProgress: { [weak self] in self?.preview($0, $1, hold: $2) },
                            onGesture: { [weak self] in self?.perform($0, $1, hold: $2) })
-        tap.isEnabled = defaults.bool(forKey: Defaults.enabled)
+        tap.apply(settings)
+        tap.isEnabled = UserDefaults.standard.bool(forKey: Defaults.enabled)
         if tap.start() {
             self.tap = tap
             statusLine.title = "↑ fill · ← → split · ↓ next display · pinch minimize"
@@ -157,7 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// preview when `gesture` is nil.
     private func preview(_ target: AppWindow?, _ gesture: Gesture?, hold: Int?) {
         guard let target, let gesture,
-              UserDefaults.standard.bool(forKey: Defaults.previews),
+              settings.showPreviews,
               let window = target.frame else {
             preview.hide()
             return
@@ -216,10 +225,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         do {
             let arrangement = try decide()
             logger.info("\(name, privacy: .public): \(arrangement.summary, privacy: .public)")
-            let duration = UserDefaults.standard.double(forKey: Defaults.duration)
+            let duration = settings.animationDuration
             // A ⌘ swipe works anywhere in the window, so the pointer stays put.
             let keepPointer = staysOnScreen && !command
-                && UserDefaults.standard.bool(forKey: Defaults.pointerOnTitleBar)
+                && settings.keepPointerOnTitleBar
             worker.async {
                 do {
                     try FlickCore.perform(arrangement, duration: duration)
@@ -244,13 +253,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func togglePreviews() {
-        let defaults = UserDefaults.standard
-        defaults.set(!defaults.bool(forKey: Defaults.previews), forKey: Defaults.previews)
+        store.update { $0.showPreviews.toggle() }
     }
 
     @objc private func togglePointer() {
-        let defaults = UserDefaults.standard
-        defaults.set(!defaults.bool(forKey: Defaults.pointerOnTitleBar), forKey: Defaults.pointerOnTitleBar)
+        store.update { $0.keepPointerOnTitleBar.toggle() }
+    }
+
+    @objc private func showSettings() {
+        if settingsWindow == nil {
+            let window = NSWindow(contentViewController: NSHostingController(
+                rootView: SettingsView(store: store)))
+            window.title = "Flick Settings"
+            window.styleMask = [.titled, .closable]
+            window.isReleasedWhenClosed = false
+            window.center()
+            settingsWindow = window
+        }
+        // A menu-bar app is never active on its own.
+        NSApp.activate()
+        settingsWindow?.makeKeyAndOrderFront(nil)
     }
 
     @objc private func toggleLogin() {

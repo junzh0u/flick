@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import Testing
 @testable import FlickCore
 
@@ -282,5 +283,103 @@ private let momentum: [(ScrollPhase, MomentumPhase, Double, Double)] = [
         let unifiedToolbar = CGRect(x: 120, y: 219, width: 14, height: 14)
         #expect(titleBarBand(window: window, closeButton: unifiedToolbar).height == 52)
         #expect(titleBarBand(window: window, closeButton: nil).height == 28)
+    }
+}
+
+@Suite struct FlickSettingsTests {
+    @Test func readsTheTOMLSubsetWithComments() throws {
+        let s = try FlickSettings.decode(toml: """
+            # mine
+            swipe_threshold = 1_00  # roomier
+            show_previews = false
+            future_key = "ignored"
+            excluded_apps = [
+              "com.apple.finder",  # has its own gestures
+              'com.example.app',
+            ]
+            """)
+        var expected = FlickSettings()
+        expected.swipeThreshold = 100
+        expected.showPreviews = false
+        expected.excludedApps = ["com.apple.finder", "com.example.app"]
+        #expect(s == expected)
+        #expect(try FlickSettings.decode(toml: "") == FlickSettings())
+    }
+
+    @Test func outOfRangeValuesAreClamped() throws {
+        let s = try FlickSettings.decode(toml: "swipe_threshold = 1\nanimation_duration = -2")
+        #expect(s.swipeThreshold == FlickSettings.swipeThresholds.lowerBound)
+        #expect(s.animationDuration == 0)
+    }
+
+    @Test(arguments: [
+        ("show_previews = yes", 1, "show_previews: unrecognized value yes"),
+        ("\nswipe_threshold = true", 2, "swipe_threshold should be a number"),
+        ("excluded_apps = [1]", 1, "excluded_apps should be an array of strings"),
+        ("excluded_apps = [\n\"a\",", 1, "unclosed ["),
+        ("show_previews = true\nshow_previews = false", 2, "show_previews is set twice"),
+        ("[flick]", 1, "tables aren't supported"),
+        ("just words", 1, "expected key = value"),
+    ])
+    func errorsNameTheLine(text: String, line: Int, message: String) {
+        #expect(throws: SettingsError(line: line, message: message)) {
+            try FlickSettings.decode(toml: text)
+        }
+    }
+
+    @Test func newFileIsACommentedTemplateWithTheValues() throws {
+        var s = FlickSettings()
+        s.showPreviews = false
+        let text = try s.toml(updating: nil)
+        #expect(text.hasPrefix("# Flick settings"))
+        #expect(text.contains("\n# Show where a gesture will put the window while it's in progress.\nshow_previews = false\n"))
+        #expect(text.contains("\nswipe_threshold = 50\n"))
+        #expect(text.contains("\nexcluded_apps = []\n"))
+        #expect(try FlickSettings.decode(toml: text) == s)
+    }
+
+    @Test func updatingRewritesOnlyChangedLinesKeepingComments() throws {
+        let original = """
+            # mine
+
+              swipe_threshold = 50    # roomy
+            show_previews = true
+            excluded_apps = [
+              "com.apple.finder",
+            ]  # gesture-heavy
+            """
+        var s = try FlickSettings.decode(toml: original)
+        s.swipeThreshold = 80
+        s.excludedApps = ["com.apple.finder", "com.example.app"]
+        s.animationDuration = 0.35
+        let updated = try s.toml(updating: original)
+        #expect(updated == """
+            # mine
+
+              swipe_threshold = 80    # roomy
+            show_previews = true
+            excluded_apps = [
+              "com.apple.finder",
+              "com.example.app",
+            ]  # gesture-heavy
+            animation_duration = 0.35
+
+            """)
+        #expect(try FlickSettings.decode(toml: updated) == s)
+        #expect(try s.toml(updating: updated) == updated)
+    }
+
+    @Test func updatingRefusesAFileThatDoesntParse() {
+        #expect(throws: SettingsError.self) { try FlickSettings().toml(updating: "nonsense") }
+    }
+
+    @Test func fileFollowsXDGConfigHome() {
+        #expect(FlickSettings.fileURL(environment: ["XDG_CONFIG_HOME": "/tmp/cfg"]).path
+            == "/tmp/cfg/flick/config.toml")
+        #expect(FlickSettings.fileURL(environment: [:]).path.hasSuffix("/.config/flick/config.toml"))
+    }
+
+    @Test func loadFallsBackToDefaults() {
+        #expect(FlickSettings.load(from: URL(fileURLWithPath: "/nonexistent/flick.toml")) == FlickSettings())
     }
 }

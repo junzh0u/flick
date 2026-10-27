@@ -28,6 +28,8 @@ enum Gesture: Equatable {
 @MainActor
 final class SwipeTap {
     var isEnabled = true
+    /// Bundle identifiers of apps whose windows gestures pass through.
+    private var excludedApps: Set<String> = []
 
     private var swipes: SwipeRecognizer
     private var pinches = PinchRecognizer()
@@ -53,12 +55,16 @@ final class SwipeTap {
 
     /// `onProgress` hears what the gesture in progress would do whenever it
     /// changes, nil once it ends or falls short; `onGesture`, each one made.
-    init(threshold: Double,
-         onProgress: @escaping (AppWindow?, Gesture?, _ hold: Int?) -> Void,
+    init(onProgress: @escaping (AppWindow?, Gesture?, _ hold: Int?) -> Void,
          onGesture: @escaping (AppWindow, Gesture, _ hold: Int?) -> Void) {
-        swipes = SwipeRecognizer(threshold: threshold)
+        swipes = SwipeRecognizer()
         self.onProgress = onProgress
         self.onGesture = onGesture
+    }
+
+    func apply(_ settings: FlickSettings) {
+        swipes.threshold = settings.swipeThreshold
+        excludedApps = Set(settings.excludedApps)
     }
 
     /// Starts watching; false without Accessibility permission.
@@ -159,6 +165,7 @@ final class SwipeTap {
             commandTarget = target
             holds += 1
         }
+        if let id = target?.bundleIdentifier, excludedApps.contains(id) { target = nil }
         return target != nil
     }
 

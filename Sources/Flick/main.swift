@@ -47,7 +47,7 @@ func failAudibly(_ message: String) -> Never {
 func arrangeFrontmost(_ command: String, _ args: ArraySlice<String>) -> Never {
     var args = args
     var dryRun = false
-    var duration = 0.2
+    var duration = FlickSettings.load().animationDuration
     var action: Action? = command == "fill" ? .fill : nil
     while let arg = args.popFirst() {
         switch arg {
