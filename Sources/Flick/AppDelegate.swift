@@ -142,7 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         tap.isEnabled = defaults.bool(forKey: Defaults.enabled)
         if tap.start() {
             self.tap = tap
-            statusLine.title = "On a title bar, or with ⌘ anywhere in a window: swipe ↑ fill, ← → split, ↓ next display; pinch in to minimize"
+            statusLine.title = "↑ fill · ← → split · ↓ next display · pinch minimize"
             logger.notice("watching the trackpad")
         } else {
             statusLine.title = "Couldn't watch the trackpad"
