@@ -1,22 +1,22 @@
 # Flick
 
-A menu-bar app for macOS that fills, splits or minimizes a window when you swipe two fingers across its title bar, and stays out of the way of Stage Manager. Hold ⌘ as you start the swipe to use it anywhere in the window, and to move the window to the next display instead of minimizing it.
+A menu-bar app for macOS that fills, splits, moves or minimizes a window when you swipe or pinch two fingers on its title bar, and stays out of the way of Stage Manager. Hold ⌘ as you start a gesture to use it anywhere in the window.
 
-| Swipe on a title bar, or with ⌘ anywhere in a window | Stage Manager off | Stage Manager on |
+| On a title bar, or with ⌘ anywhere in a window | Stage Manager off | Stage Manager on |
 | --- | --- | --- |
-| ↑ | Window → Fill | fill the stage |
-| ← | Window → Move & Resize → Left | left half of the stage |
-| → | Window → Move & Resize → Right | right half of the stage |
-| ↓ | minimize to the Dock | minimize to the strip |
-| ⌘↓ | move to the next display, keeping its place on screen | same, within the stages |
+| swipe ↑ | Window → Fill | fill the stage |
+| swipe ← | Window → Move & Resize → Left | left half of the stage |
+| swipe → | Window → Move & Resize → Right | right half of the stage |
+| swipe ↓ | move to the next display, keeping its place on screen | same, within the stages |
+| pinch in | minimize to the Dock | minimize to the strip |
 
-While ⌘ stays held, later ⌘ swipes keep going to the window the first one hit, wherever the pointer is, so you can split a window, send it to the next display and fill it there in one go. Releasing ⌘ lets go of it.
+While ⌘ stays held, later ⌘ gestures keep going to the window the first one hit, wherever the pointer is, so you can split a window, send it to the next display and fill it there in one go. Releasing ⌘ lets go of it.
 
 Displays are ordered left to right, wrapping around. A moved window keeps its position and size relative to the area windows are arranged in — the visible frame, or with Stage Manager on, the stage — so a filled window stays filled, a left half stays a left half, and a window in the top-right third stays there.
 
 With Stage Manager off, Flick presses macOS's own Window-menu commands, so windows tile exactly as they would from the menu. With it on, those commands would cover the strip of recent apps, so Flick instead moves the window into the display's *stage*, the area beside the strip where macOS itself places new windows, and eases it there over 0.2 s the way native tiling animates.
 
-The swipe is decided when your fingers lift, so you can still change direction or back out mid-swipe. Until then a frosted preview shows where the window will go, with a symbol for the action, and follows the swipe as it changes direction. Every event of a swipe Flick takes, including its momentum, is swallowed, so the window never scrolls; with ⌘ held, that includes ⌘-scrolling within windows. Swipes that start elsewhere, and scrolls with ⌥, ⌃ or ⇧ held, pass through untouched.
+The swipe is decided when your fingers lift, so you can still change direction or back out mid-swipe. Until then a frosted preview shows where the window will go, with a symbol for the action, and follows the swipe as it changes direction. A pinch likewise fires when the fingers lift, closed far enough. Every event of a gesture Flick takes, including a swipe's momentum, is swallowed, so the window never scrolls or zooms; with ⌘ held, that includes ⌘-scrolling and pinching within windows. Gestures that start elsewhere, and those with ⌥, ⌃ or ⇧ held, pass through untouched.
 
 ## Install
 
@@ -66,6 +66,7 @@ shows each recognized swipe, the arrangement it chose, and any failure. Failures
 ## How it works
 
 - **Gestures.** A session event tap sees every scroll event before apps do. Trackpad scrolls carry gesture phases (may-begin, began, changed, ended, cancelled, then momentum). `SwipeRecognizer` decides on a gesture's first event whether it started on a title bar (or with ⌘ held, on a window), then swallows it through its momentum and classifies the total finger travel when the fingers lift.
+- **Pinches.** The same tap sees pinches as gesture events whose HID type is zoom, the ones AppKit turns into magnify events. `PinchRecognizer` picks the window the same way and fires when the fingers lift, having closed by enough.
 - **Title bars.** An Accessibility hit test finds the topmost window under the pointer, which must be a standard, non-full-screen window; for a ⌘ swipe that is enough. Its title-bar band runs from the window's top edge to twice the close button's depth, because the traffic lights sit centred in whatever the window has there: a plain title bar, a unified toolbar or a tab strip.
 - **Displays.** Rather than pressing Window → Move to <display>, Flick moves the window itself, mapping its frame between the two displays' usable areas in proportion, and jumps there as that command does.
 - **Stages.** Stage Manager's stage frames come from `WMClientWindowManager` in the private WindowManagement framework, the same source AppKit uses to place new windows. The app keeps one client connected, so it always has the current stages. If a macOS update changes that framework, Flick beeps instead of moving the window.

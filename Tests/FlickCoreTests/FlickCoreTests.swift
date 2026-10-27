@@ -108,6 +108,44 @@ private let momentum: [(ScrollPhase, MomentumPhase, Double, Double)] = [
     }
 }
 
+@Suite struct PinchRecognizerTests {
+    private func feed(_ r: inout PinchRecognizer, onTarget: Bool,
+                      _ events: [(ScrollPhase, Double)]) -> [PinchVerdict] {
+        events.map { phase, m in r.handle(phase: phase, magnification: m) { onTarget } }
+    }
+
+    @Test func pinchingInFarEnoughFires() {
+        var r = PinchRecognizer(threshold: 0.3)
+        #expect(feed(&r, onTarget: true, [(.began, -0.1), (.changed, -0.15), (.changed, -0.1),
+                                          (.ended, 0)])
+            == [.swallow, .swallow, .swallow, .fire])
+    }
+
+    @Test func pendingTracksTheTotal() {
+        var r = PinchRecognizer(threshold: 0.3)
+        _ = feed(&r, onTarget: true, [(.began, -0.2)])
+        #expect(!r.pending)
+        _ = feed(&r, onTarget: true, [(.changed, -0.2)])
+        #expect(r.pending)
+        _ = feed(&r, onTarget: true, [(.changed, 0.3)])
+        #expect(!r.pending)
+        _ = feed(&r, onTarget: true, [(.ended, 0)])
+        #expect(!r.pending)
+    }
+
+    @Test func pinchingOutOrNotFarEnoughIsSwallowedWithoutFiring() {
+        var r = PinchRecognizer(threshold: 0.3)
+        #expect(feed(&r, onTarget: true, [(.began, 0.2), (.changed, 0.4), (.ended, 0)]).last == .swallow)
+        #expect(feed(&r, onTarget: true, [(.began, -0.1), (.ended, -0.1)]).last == .swallow)
+    }
+
+    @Test func pinchesElsewherePassThrough() {
+        var r = PinchRecognizer(threshold: 0.3)
+        #expect(feed(&r, onTarget: false, [(.began, -0.5), (.changed, -0.5), (.ended, 0)])
+            == [.pass, .pass, .pass])
+    }
+}
+
 @Suite struct GeometryTests {
     let display = Display(frame: CGRect(x: 0, y: 0, width: 1728, height: 1117),
                           visible: CGRect(x: 0, y: 33, width: 1728, height: 1084), fps: 120)

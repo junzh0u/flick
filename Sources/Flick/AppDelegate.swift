@@ -3,20 +3,21 @@ import FlickCore
 import os
 import ServiceManagement
 
-/// What a swipe does: on a title bar, or with ⌘ held anywhere in a window,
-/// ↑ fills and ← → split; ↓ minimizes, or with ⌘, moves the window to the
-/// next display.
+/// What a gesture does, on a title bar or with ⌘ held anywhere in a window:
+/// swiping ↑ fills, ← → split and ↓ moves the window to the next display;
+/// pinching in minimizes.
 enum Plan {
     case arrange(Action)
     case minimize
     case nextDisplay
 
-    init(_ direction: SwipeDirection, command: Bool) {
-        switch direction {
-        case .up: self = .arrange(.fill)
-        case .left: self = .arrange(.left)
-        case .right: self = .arrange(.right)
-        case .down: self = command ? .nextDisplay : .minimize
+    init(_ gesture: Gesture) {
+        switch gesture {
+        case .swipe(.up): self = .arrange(.fill)
+        case .swipe(.left): self = .arrange(.left)
+        case .swipe(.right): self = .arrange(.right)
+        case .swipe(.down): self = .nextDisplay
+        case .pinchIn: self = .minimize
         }
     }
 
@@ -136,12 +137,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func startTap() {
         let defaults = UserDefaults.standard
         let tap = SwipeTap(threshold: defaults.double(forKey: Defaults.threshold),
-                           onProgress: { [weak self] in self?.previewSwipe($0, $1, command: $2) },
-                           onSwipe: { [weak self] in self?.swiped($0, $1, command: $2) })
+                           onProgress: { [weak self] target, gesture, _ in self?.preview(target, gesture) },
+                           onGesture: { [weak self] in self?.perform($0, $1, command: $2) })
         tap.isEnabled = defaults.bool(forKey: Defaults.enabled)
         if tap.start() {
             self.tap = tap
-            statusLine.title = "Swipe on a title bar: ↑ fill, ← → split, ↓ minimize; with ⌘ anywhere in a window, ↓ next display"
+            statusLine.title = "On a title bar, or with ⌘ anywhere in a window: swipe ↑ fill, ← → split, ↓ next display; pinch in to minimize"
             logger.notice("watching the trackpad")
         } else {
             statusLine.title = "Couldn't watch the trackpad"
@@ -149,16 +150,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// Shows where the swipe in progress would put `target`, or hides the
-    /// preview when `direction` is nil.
-    private func previewSwipe(_ target: AppWindow?, _ direction: SwipeDirection?, command: Bool) {
-        guard let target, let direction,
+    /// Shows where the gesture in progress would put `target`, or hides the
+    /// preview when `gesture` is nil.
+    private func preview(_ target: AppWindow?, _ gesture: Gesture?) {
+        guard let target, let gesture,
               UserDefaults.standard.bool(forKey: Defaults.previews),
               let window = target.frame else {
             preview.hide()
             return
         }
-        let plan = Plan(direction, command: command)
+        let plan = Plan(gesture)
         let stages = stageManagerEnabled() ? StageWatcher.shared.frames(waitingUpTo: 0) : nil
         let frame: CGRect
         do {
@@ -179,8 +180,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         preview.show(frame, symbol: plan.symbol)
     }
 
-    private func swiped(_ target: AppWindow, _ direction: SwipeDirection, command: Bool) {
-        let plan = Plan(direction, command: command)
+    private func perform(_ target: AppWindow, _ gesture: Gesture, command: Bool) {
+        let plan = Plan(gesture)
         let name = plan.name
         let decide: () throws(ArrangeError) -> Arrangement
         switch plan {
