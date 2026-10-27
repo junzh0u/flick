@@ -29,6 +29,7 @@ local bin=$(swift build --show-bin-path)/Flick
 local usage="flick: usage: flick
        flick fill [--dry-run] [--duration SECONDS]
        flick tile [--dry-run] [--duration SECONDS] left|right|top|bottom
+       flick pair [--dry-run] [--duration SECONDS] left|right
        flick display [--dry-run] previous|next
        flick minimize [--dry-run]
        flick probe X Y
@@ -46,6 +47,9 @@ assert_eq "tile with an unknown side names it" "flick: unknown argument middle
 ${usage#flick: }" "$out"
 $bin tile left right &>/dev/null
 assert_eq "tile takes one side" 1 $?
+out=$($bin pair --dry-run top 2>&1)
+assert_eq "pair takes only left or right" "flick: unknown argument top
+${usage#flick: }" "$out"
 out=$($bin display 2>&1)
 assert_eq "display without a direction prints usage" $usage "$out"
 $bin display sideways &>/dev/null

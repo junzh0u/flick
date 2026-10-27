@@ -5,6 +5,8 @@
 //   flick                                   run the menu-bar app
 //   flick fill [--dry-run] [--duration S]   fill the focused window
 //   flick tile [--dry-run] [--duration S] left|right|top|bottom
+//   flick pair [--dry-run] [--duration S] left|right
+//                                           split its area with the window behind
 //   flick display [--dry-run] previous|next move it to another display
 //   flick minimize [--dry-run]              minimize it
 //   flick probe X Y                         is there a title bar at X Y?
@@ -24,6 +26,7 @@ let usage = """
     usage: flick
            flick fill [--dry-run] [--duration SECONDS]
            flick tile [--dry-run] [--duration SECONDS] left|right|top|bottom
+           flick pair [--dry-run] [--duration SECONDS] left|right
            flick display [--dry-run] previous|next
            flick minimize [--dry-run]
            flick probe X Y
@@ -49,6 +52,7 @@ func arrangeFrontmost(_ command: String, _ args: ArraySlice<String>) -> Never {
     var dryRun = false
     var duration = FlickSettings.load().animationDuration
     var action: Action? = command == "fill" ? .fill : nil
+    let sides = command == "pair" ? ["left", "right"] : ["left", "right", "top", "bottom"]
     while let arg = args.popFirst() {
         switch arg {
         case "--dry-run":
@@ -58,8 +62,7 @@ func arrangeFrontmost(_ command: String, _ args: ArraySlice<String>) -> Never {
                 fail("--duration needs a number of seconds")
             }
             duration = value
-        case _ where command == "tile" && action == nil
-            && ["left", "right", "top", "bottom"].contains(arg):
+        case _ where command != "fill" && action == nil && sides.contains(arg):
             action = Action(rawValue: arg)
         default:
             fail("unknown argument \(arg)\n\(usage)")
@@ -68,7 +71,8 @@ func arrangeFrontmost(_ command: String, _ args: ArraySlice<String>) -> Never {
     guard let action else { fail(usage) }
     let target = frontmostWindow()
     run(dryRun, duration) { () throws(ArrangeError) in
-        try arrangement(action, for: target, stageWait: 0.25)
+        command == "pair" ? try pairArrangement(action, fraction: 0.5, for: target, stageWait: 0.25)
+            : try arrangement(action, for: target, stageWait: 0.25)
     }
 }
 
@@ -148,7 +152,7 @@ func probe(_ args: ArraySlice<String>) -> Never {
 /// Shows or sets whether Flick.app opens at login, as its menu's Launch at
 /// Login does. Only works from the executable inside Flick.app.
 func launchAtLogin(_ args: ArraySlice<String>) -> Never {
-    guard args.count <= 1 else { fail(usage) }
+    guard args.count <= 1, args.allSatisfy({ $0 == "on" || $0 == "off" }) else { fail(usage) }
     guard Bundle.main.bundleURL.pathExtension == "app" else {
         fail("launch-at-login only works from the executable inside Flick.app")
     }
@@ -166,7 +170,6 @@ func launchAtLogin(_ args: ArraySlice<String>) -> Never {
         print(describe())
         exit(0)
     }
-    guard wanted == "on" || wanted == "off" else { fail(usage) }
     do {
         if wanted == "on" && service.status != .enabled {
             try service.register()
@@ -185,7 +188,7 @@ var args = CommandLine.arguments.dropFirst()
 if let command = args.first, !command.hasPrefix("-") {
     args = args.dropFirst()
     switch command {
-    case "fill", "tile": arrangeFrontmost(command, args)
+    case "fill", "tile", "pair": arrangeFrontmost(command, args)
     case "display": moveToDisplay(args)
     case "minimize": minimizeFrontmost(args)
     case "probe": probe(args)

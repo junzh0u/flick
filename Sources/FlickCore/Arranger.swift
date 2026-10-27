@@ -15,7 +15,16 @@ public struct Arrangement: @unchecked Sendable {
         /// to another one when `crossesDisplays`.
         case move(app: AXUIElement, window: AXUIElement, from: CGRect, to: CGRect, fps: Int,
                   crossesDisplays: Bool)
+        /// Moves several windows within a display, easing them together.
+        case moveTogether([Move], fps: Int)
         case minimize(AXUIElement)
+    }
+
+    struct Move {
+        let app: AXUIElement
+        let window: AXUIElement
+        let from: CGRect
+        let to: CGRect
     }
 
     let step: Step
@@ -89,6 +98,36 @@ private func describe(_ r: CGRect) -> String {
     "\(Int(r.minX)) \(Int(r.minY)) \(Int(r.width)) \(Int(r.height))"
 }
 
+/// Decides how to split `target`'s area with the window behind it: `target`
+/// takes `fraction` of it on `side` and the other window the rest, both
+/// easing there together. The area is the stage with Stage Manager on, so
+/// only windows already sharing the stage pair up, else the visible frame.
+@MainActor
+public func pairArrangement(_ side: Action, fraction: Double, for target: AppWindow,
+                            stageWait: TimeInterval) throws(ArrangeError) -> Arrangement {
+    guard let start = target.frame else {
+        throw ArrangeError(description: "\(target.appName)'s window has no frame")
+    }
+    let stageManager = stageManagerEnabled()
+    let p: Placement
+    do {
+        p = try placement(for: side, fraction: fraction, window: start, displays: currentDisplays(),
+                          stages: stageManager ? StageWatcher.shared.frames(waitingUpTo: stageWait) : nil)
+    } catch {
+        throw ArrangeError(description: error.description)
+    }
+    guard let other = target.companion(in: p.stage), let otherStart = other.frame else {
+        throw ArrangeError(description: "no other window on \(stageManager ? "the stage" : "the display") to pair \(target.appName)'s with")
+    }
+    let (mine, theirs) = pairFrames(side, fraction: fraction, in: p.stage)
+    return Arrangement(
+        step: .moveTogether([
+            Arrangement.Move(app: target.app, window: target.window, from: start, to: mine),
+            Arrangement.Move(app: other.app, window: other.window, from: otherStart, to: theirs),
+        ], fps: p.display.fps),
+        summary: "\(target.appName) \(describe(mine)) | \(other.appName) \(describe(theirs))")
+}
+
 /// Minimizes `target` as its yellow button does: into the Dock, or with Stage
 /// Manager on, into the strip of recent apps — where the window keeps
 /// reporting itself as not minimized. It works on any window that can be
@@ -112,9 +151,11 @@ public func perform(_ arrangement: Arrangement, duration: Double) throws(Arrange
             throw ArrangeError(description: "the window can't be minimized (\(result.rawValue))")
         }
     case let .move(app, window, start, target, fps, crossesDisplays):
-        move(app: app, window: window, from: start, to: target, fps: fps,
+        move([Arrangement.Move(app: app, window: window, from: start, to: target)], fps: fps,
              duration: crossesDisplays ? 0 : duration)
         if crossesDisplays { settle(window, at: target) }
+    case let .moveTogether(moves, fps):
+        move(moves, fps: fps, duration: duration)
     }
 }
 
@@ -144,19 +185,27 @@ public func keepPointerOnTitleBar(of target: AppWindow, timeout: TimeInterval = 
     CGAssociateMouseAndMouseCursorPosition(1)
 }
 
-private func move(app: AXUIElement, window: AXUIElement, from start: CGRect, to target: CGRect,
-                  fps: Int, duration: Double) {
+/// Moves `moves`' windows to their frames, easing them there together over
+/// `duration` seconds (0 jumps).
+private func move(_ moves: [Arrangement.Move], fps: Int, duration: Double) {
     // Apps that turn on AXEnhancedUserInterface (Chromium and Electron do for
     // VoiceOver) animate and relayout on every Accessibility resize, which
     // makes each step lag; switch it off while moving.
     let enhanced = "AXEnhancedUserInterface" as CFString
-    let wasEnhanced = copy(app, enhanced as String) as? Bool == true
-    if wasEnhanced { AXUIElementSetAttributeValue(app, enhanced, kCFBooleanFalse) }
-    defer { if wasEnhanced { AXUIElementSetAttributeValue(app, enhanced, kCFBooleanTrue) } }
+    let wasEnhanced = moves.map { copy($0.app, enhanced as String) as? Bool == true }
+    for (m, was) in zip(moves, wasEnhanced) where was {
+        AXUIElementSetAttributeValue(m.app, enhanced, kCFBooleanFalse)
+    }
+    defer {
+        for (m, was) in zip(moves, wasEnhanced) where was {
+            AXUIElementSetAttributeValue(m.app, enhanced, kCFBooleanTrue)
+        }
+    }
 
     func lerp(_ a: CGFloat, _ b: CGFloat, _ t: CGFloat) -> CGFloat { a + (b - a) * t }
 
-    if duration > 0 && start.integral != target.integral {
+    let moving = moves.filter { $0.from.integral != $0.to.integral }
+    if duration > 0 && !moving.isEmpty {
         let began = CACurrentMediaTime()
         let frameInterval = 1.0 / Double(fps)
         while true {
@@ -164,11 +213,13 @@ private func move(app: AXUIElement, window: AXUIElement, from start: CGRect, to 
             if elapsed >= duration { break }
             // Ease-out cubic: fast start, gentle landing.
             let t = CGFloat(1 - pow(1 - elapsed / duration, 3))
-            let step = CGRect(x: lerp(start.minX, target.minX, t), y: lerp(start.minY, target.minY, t),
-                              width: lerp(start.width, target.width, t),
-                              height: lerp(start.height, target.height, t)).integral
-            setPosition(window, step.origin)
-            setSize(window, step.size)
+            for m in moving {
+                let step = CGRect(x: lerp(m.from.minX, m.to.minX, t), y: lerp(m.from.minY, m.to.minY, t),
+                                  width: lerp(m.from.width, m.to.width, t),
+                                  height: lerp(m.from.height, m.to.height, t)).integral
+                setPosition(m.window, step.origin)
+                setSize(m.window, step.size)
+            }
             // A slow app gets fewer, larger steps; the animation still ends on time.
             let next = began + (floor(elapsed / frameInterval) + 1) * frameInterval
             let wait = next - CACurrentMediaTime()
@@ -177,9 +228,11 @@ private func move(app: AXUIElement, window: AXUIElement, from start: CGRect, to 
     }
     // Size, position, size: the first resize can be clamped while the window
     // still sits at its old origin.
-    setSize(window, target.size)
-    setPosition(window, target.origin)
-    setSize(window, target.size)
+    for m in moves {
+        setSize(m.window, m.to.size)
+        setPosition(m.window, m.to.origin)
+        setSize(m.window, m.to.size)
+    }
 }
 
 /// Re-applies `target` to a window just moved to another display until it

@@ -9,8 +9,11 @@ A menu-bar app for macOS that fills, splits, moves or minimizes a window when yo
 | swipe → | Window → Move & Resize → Right | right half of the stage |
 | swipe ↓ | move to the next display, keeping its place on screen | same, within the stages |
 | pinch in | minimize to the Dock | minimize to the strip |
+| ⌘⇧ swipe ← / → | split the display with the window behind: this one on that side | split the stage with the window behind |
 
 While ⌘ stays held, later ⌘ gestures keep going to the window the first one hit, wherever the pointer is, so you can split a window, send it to the next display and fill it there in one go. Releasing ⌘ lets go of it. Repeating a split in the same hold cycles the window through half, two thirds and one third of that side, as Rectangle does; with Stage Manager off, the thirds take the display's visible frame, since macOS's Window menu has none.
+
+Adding ⇧ makes a split a pair: the window takes its side and the window behind it — the next one on the stage, or with Stage Manager off, on the display — takes the rest, both easing there together. Pairs cycle the same way, and turning a split into a pair keeps its size, so ⌘← ⌘← ⌘⇧← gives the window two thirds and the one behind it the last third. With Stage Manager on, only windows already sharing the stage pair up.
 
 Displays are ordered left to right, wrapping around. A moved window keeps its position and size relative to the area windows are arranged in — the visible frame, or with Stage Manager on, the stage — so a filled window stays filled, a left half stays a left half, and a window in the top-right third stays there.
 
@@ -64,6 +67,7 @@ The app's executable also arranges the frontmost window once and exits, which he
 FLICK=~/Applications/Flick.app/Contents/MacOS/Flick
 $FLICK fill [--dry-run] [--duration SECONDS]
 $FLICK tile [--dry-run] [--duration SECONDS] left|right|top|bottom
+$FLICK pair [--dry-run] [--duration SECONDS] left|right
 $FLICK display [--dry-run] previous|next
 $FLICK minimize [--dry-run]
 $FLICK probe X Y    # is there a title bar at this point (global, top-left origin)?
@@ -85,6 +89,7 @@ shows each recognized swipe, the arrangement it chose, and any failure. Failures
 - **Gestures.** A session event tap sees every scroll event before apps do. Trackpad scrolls carry gesture phases (may-begin, began, changed, ended, cancelled, then momentum). `SwipeRecognizer` decides on a gesture's first event whether it started on a title bar (or with ⌘ held, on a window), then swallows it through its momentum and classifies the total finger travel when the fingers lift.
 - **Pinches.** The same tap sees pinches as gesture events whose HID type is zoom, the ones AppKit turns into magnify events. `PinchRecognizer` picks the window the same way and fires when the fingers lift, having closed by enough.
 - **Title bars.** An Accessibility hit test finds the topmost window under the pointer, which must be a standard, non-full-screen window; for a ⌘ swipe that is enough. Its title-bar band runs from the window's top edge to twice the close button's depth, because the traffic lights sit centred in whatever the window has there: a plain title bar, a unified toolbar or a tab strip.
+- **Pairs.** The window behind is the frontmost other standard window, in the window server's front-to-back order, that lies mostly inside the stage or visible frame, which leaves out Stage Manager's thumbnails. It is matched to its Accessibility window through `_AXUIElementGetWindow`, the private call window managers use to get a window's ID.
 - **Displays.** Rather than pressing Window → Move to <display>, Flick moves the window itself, mapping its frame between the two displays' usable areas in proportion, and jumps there as that command does.
 - **Stages.** Stage Manager's stage frames come from `WMClientWindowManager` in the private WindowManagement framework, the same source AppKit uses to place new windows. The app keeps one client connected, so it always has the current stages. If a macOS update changes that framework, Flick beeps instead of moving the window.
 

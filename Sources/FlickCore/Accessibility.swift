@@ -63,6 +63,19 @@ func setSize(_ window: AXUIElement, _ s: CGSize) {
                                  AXValueCreate(.cgSize, &s)!)
 }
 
+// MARK: Window IDs
+
+/// The window server's ID for an Accessibility window, through the private
+/// call every window manager uses; there is no public one.
+@_silgen_name("_AXUIElementGetWindow")
+private func _AXUIElementGetWindow(_ element: AXUIElement,
+                                   _ id: UnsafeMutablePointer<CGWindowID>) -> AXError
+
+func windowID(of window: AXUIElement) -> CGWindowID? {
+    var id: CGWindowID = 0
+    return _AXUIElementGetWindow(window, &id) == .success && id != 0 ? id : nil
+}
+
 // MARK: Window menu
 
 /// The first item of the app's Window menu whose title matches.
@@ -170,6 +183,43 @@ public struct AppWindow: @unchecked Sendable {
     }
 
     public var frame: CGRect? { FlickCore.frame(of: window) }
+
+    /// The frontmost other standard window that lies mostly inside `area` —
+    /// the one behind this window on its stage, or with Stage Manager off, on
+    /// its display — in front-to-back order from the window server. Stage
+    /// Manager's thumbnails of other stages lie outside the area.
+    @MainActor
+    public func companion(in area: CGRect) -> AppWindow? {
+        let own = windowID(of: window)
+        let ownFrame = frame
+        let me = ProcessInfo.processInfo.processIdentifier
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
+                                                    kCGNullWindowID) as? [[String: Any]]
+        else { return nil }
+        for info in list {
+            guard (info[kCGWindowLayer as String] as? Int) == 0,
+                  let id = info[kCGWindowNumber as String] as? CGWindowID, id != own,
+                  let pid = info[kCGWindowOwnerPID as String] as? pid_t, pid != me,
+                  (info[kCGWindowAlpha as String] as? Double ?? 1) > 0,
+                  let bounds = (info[kCGWindowBounds as String] as? NSDictionary)
+                      .flatMap({ CGRect(dictionaryRepresentation: $0 as CFDictionary) }),
+                  bounds.width >= 100, bounds.height >= 100,
+                  overlap(bounds, with: area) >= 0.5 else { continue }
+            let app = AXUIElementCreateApplication(pid)
+            AXUIElementSetMessagingTimeout(app, 1)
+            let windows = copy(app, kAXWindowsAttribute) as? [AXUIElement] ?? []
+            guard let match = windows.first(where: { windowID(of: $0) == id })
+                    ?? windows.first(where: { FlickCore.frame(of: $0) == bounds }),
+                  string(match, kAXSubroleAttribute) == kAXStandardWindowSubrole,
+                  copy(match, kAXMinimizedAttribute) as? Bool != true,
+                  !(own == nil && FlickCore.frame(of: match) == ownFrame && CFEqual(app, self.app))
+            else { continue }
+            let running = NSRunningApplication(processIdentifier: pid)
+            return AppWindow(app: app, window: match, appName: running?.localizedName ?? "?",
+                             bundleIdentifier: running?.bundleIdentifier)
+        }
+        return nil
+    }
 
     /// The window's title-bar band, where swipes start (see titleBarBand).
     public var titleBar: CGRect? {

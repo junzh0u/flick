@@ -15,12 +15,20 @@ enum Gesture: Equatable {
     }
 }
 
+/// How a gesture was made.
+struct Modifiers: Equatable {
+    /// The ⌘ hold it belongs to, a number that changes each time ⌘ is pressed
+    /// anew; nil without ⌘.
+    var hold: Int?
+    /// Whether ⇧ was held as well as ⌘.
+    var shift = false
+}
+
 /// Watches the trackpad's scroll and magnify events through a session event
 /// tap and reports two-finger swipes and pinches that start on a window's
 /// title bar, or with ⌘ held as they start, anywhere in the window, swallowing
-/// their events so the window never scrolls or zooms. A ⌘ gesture reports
-/// which ⌘ hold it belongs to, a number that changes each time ⌘ is pressed
-/// anew; other gestures report nil.
+/// their events so the window never scrolls or zooms. Each reports its
+/// Modifiers; ⇧ counts only with ⌘, so plain ⇧-scrolling passes through.
 ///
 /// While ⌘ stays held, every ⌘ gesture goes to the window the first one hit,
 /// wherever the pointer is, so a window can be split, filled and sent to
@@ -35,13 +43,14 @@ final class SwipeTap {
     private var pinches = PinchRecognizer()
     private var target: AppWindow?
     private var command = false
+    private var shift = false
     /// The window ⌘ gestures go to until ⌘ is released.
     private var commandTarget: AppWindow?
     /// Counts ⌘ holds, so callers can tell gestures of one hold from the next.
     private var holds = 0
     private var port: CFMachPort?
-    private let onProgress: (AppWindow?, Gesture?, _ hold: Int?) -> Void
-    private let onGesture: (AppWindow, Gesture, _ hold: Int?) -> Void
+    private let onProgress: (AppWindow?, Gesture?, Modifiers) -> Void
+    private let onGesture: (AppWindow, Gesture, Modifiers) -> Void
     /// The gesture last reported to onProgress.
     private var reported: Gesture?
     private let logger = Logger(subsystem: "info.junz.flick", category: "gesture")
@@ -55,8 +64,8 @@ final class SwipeTap {
 
     /// `onProgress` hears what the gesture in progress would do whenever it
     /// changes, nil once it ends or falls short; `onGesture`, each one made.
-    init(onProgress: @escaping (AppWindow?, Gesture?, _ hold: Int?) -> Void,
-         onGesture: @escaping (AppWindow, Gesture, _ hold: Int?) -> Void) {
+    init(onProgress: @escaping (AppWindow?, Gesture?, Modifiers) -> Void,
+         onGesture: @escaping (AppWindow, Gesture, Modifiers) -> Void) {
         swipes = SwipeRecognizer()
         self.onProgress = onProgress
         self.onGesture = onGesture
@@ -149,11 +158,11 @@ final class SwipeTap {
     private func pickTarget(_ event: CGEvent) -> Bool {
         target = nil
         // Gestures with other modifiers (zoom, horizontal scroll) keep their
-        // meaning.
-        guard isEnabled, event.flags.isDisjoint(with: [
-            .maskAlternate, .maskControl, .maskShift,
-        ]) else { return false }
+        // meaning; ⇧ only joins ⌘.
         command = event.flags.contains(.maskCommand)
+        shift = event.flags.contains(.maskShift)
+        guard isEnabled, event.flags.isDisjoint(with: [.maskAlternate, .maskControl]),
+              command || !shift else { return false }
         if !command {
             // ⌘ was released while the tap couldn't see it.
             commandTarget = nil
@@ -169,6 +178,10 @@ final class SwipeTap {
         return target != nil
     }
 
+    private var modifiers: Modifiers {
+        Modifiers(hold: command ? holds : nil, shift: command && shift)
+    }
+
     private func report(_ pending: Gesture?) {
         guard pending != reported else { return }
         reported = pending
@@ -177,19 +190,19 @@ final class SwipeTap {
         if pending != nil {
             NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
         }
-        let (target, hold) = (target, command ? holds : nil)
+        let (target, modifiers) = (target, modifiers)
         // Outside the callback, which must return quickly.
-        Task { @MainActor in self.onProgress(target, pending, hold) }
+        Task { @MainActor in self.onProgress(target, pending, modifiers) }
     }
 
     private func fire(_ gesture: Gesture) {
         guard let target else { return }
-        let (command, hold) = (command, command ? holds : nil)
+        let (command, shift, modifiers) = (command, shift, modifiers)
         logger.info("""
-            \(command ? "⌘ " : "", privacy: .public)\(gesture.name, privacy: .public) on \
+            \(command ? (shift ? "⌘⇧ " : "⌘ ") : "", privacy: .public)\(gesture.name, privacy: .public) on \
             \(target.appName, privacy: .public)'s \(command ? "window" : "title bar", privacy: .public)
             """)
-        Task { @MainActor in self.onGesture(target, gesture, hold) }
+        Task { @MainActor in self.onGesture(target, gesture, modifiers) }
     }
 }
 

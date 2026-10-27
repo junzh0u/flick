@@ -177,6 +177,24 @@ private let momentum: [(ScrollPhase, MomentumPhase, Double, Double)] = [
         #expect(cycle.fraction(.right, hold: 1) == 1.0 / 2)
     }
 
+    @Test func pairingKeepsTheSplitsSizeThenCyclesOn() {
+        var cycle = SplitCycle()
+        var seen: [Double] = []
+        for paired in [false, false, true, true, false] {
+            seen.append(cycle.fraction(.left, paired: paired, hold: 1))
+            cycle.performed(.left, paired: paired, hold: 1)
+        }
+        let expected: [Double] = [1.0 / 2, 2.0 / 3, 2.0 / 3, 1.0 / 3, 1.0 / 3]
+        #expect(seen == expected)
+    }
+
+    @Test func pairFramesSplitTheAreaExactly() {
+        let area = CGRect(x: 218, y: 33, width: 1510, height: 1084)
+        let (mine, theirs) = pairFrames(.right, fraction: 2.0 / 3, in: area)
+        #expect(mine == CGRect(x: 721, y: 33, width: 1007, height: 1084))
+        #expect(theirs == CGRect(x: 218, y: 33, width: 503, height: 1084))
+    }
+
     @Test func splitsDontCycleWithoutCommandOrAcrossOtherActions() {
         var cycle = SplitCycle()
         cycle.performed(.left, hold: nil)

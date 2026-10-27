@@ -16,6 +16,17 @@ public enum Action: String, CaseIterable, Sendable {
         }
     }
 
+    /// The side across from this one; fill is its own.
+    public var opposite: Action {
+        switch self {
+        case .fill: .fill
+        case .left: .right
+        case .right: .left
+        case .top: .bottom
+        case .bottom: .top
+        }
+    }
+
     /// The part of `r` this arrangement gives the window: `fraction` of it on
     /// that side (fill ignores it). Complementary parts — opposite halves, a
     /// third and two thirds — meet exactly rather than overlap.
@@ -138,36 +149,53 @@ public func placement(for action: Action, fraction: Double = 0.5, window: CGRect
                      target: action.frame(in: usable, fraction: fraction))
 }
 
+/// The frames that split `area` between two windows: `fraction` of it on
+/// `side` for the first, the rest for the second, meeting exactly.
+public func pairFrames(_ side: Action, fraction: Double, in area: CGRect) -> (CGRect, CGRect) {
+    (side.frame(in: area, fraction: fraction), side.opposite.frame(in: area, fraction: 1 - fraction))
+}
+
 /// Repeating a split while ⌘ stays held cycles the window through half, two
-/// thirds and one third of the area on that side, as Rectangle does.
+/// thirds and one third of the area on that side, as Rectangle does. Turning a
+/// split into a pair, or back, keeps its size, so a window can be sized first
+/// and the window behind it then given the rest.
 public struct SplitCycle: Sendable {
     public static let fractions: [Double] = [1.0 / 2, 2.0 / 3, 1.0 / 3]
 
     private var hold: Int?
     private var action: Action?
+    private var paired = false
     private var step = 0
 
     public init() {}
 
     /// The fraction `action` gives the window next during ⌘ hold `hold` (nil
     /// without ⌘): a half, unless it repeats that hold's last split.
-    public func fraction(_ action: Action, hold: Int?) -> Double {
-        Self.fractions[nextStep(action, hold: hold)]
+    public func fraction(_ action: Action, paired: Bool = false, hold: Int?) -> Double {
+        Self.fractions[nextStep(action, paired: paired, hold: hold)]
     }
 
     /// Records that `action` — nil for anything else — was just performed
     /// during ⌘ hold `hold`.
-    public mutating func performed(_ action: Action?, hold: Int?) {
-        step = action.map { nextStep($0, hold: hold) } ?? 0
+    public mutating func performed(_ action: Action?, paired: Bool = false, hold: Int?) {
+        step = action.map { nextStep($0, paired: paired, hold: hold) } ?? 0
         self.hold = hold
         self.action = action
+        self.paired = paired
     }
 
-    private func nextStep(_ action: Action, hold: Int?) -> Int {
+    private func nextStep(_ action: Action, paired: Bool, hold: Int?) -> Int {
         guard let hold, hold == self.hold, action == self.action,
               action == .left || action == .right else { return 0 }
-        return (step + 1) % Self.fractions.count
+        return paired == self.paired ? (step + 1) % Self.fractions.count : step
     }
+}
+
+/// How much of `rect` lies inside `area`, from 0 to 1.
+func overlap(_ rect: CGRect, with area: CGRect) -> Double {
+    let inside = rect.intersection(area)
+    guard !inside.isNull, rect.width > 0, rect.height > 0 else { return 0 }
+    return Double(inside.width * inside.height / (rect.width * rect.height))
 }
 
 /// `window`'s frame mapped from `source` to `target` in proportion, so it keeps

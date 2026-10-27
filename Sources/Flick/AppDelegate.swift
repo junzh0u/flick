@@ -7,17 +7,19 @@ import SwiftUI
 
 /// What a gesture does, on a title bar or with ⌘ held anywhere in a window:
 /// swiping ↑ fills, ← → split and ↓ moves the window to the next display;
-/// pinching in minimizes.
+/// pinching in minimizes. With ⌘⇧, ← → split the area with the window behind.
 enum Plan {
     case arrange(Action)
+    /// Split the area with the window behind, taking this side.
+    case pair(Action)
     case minimize
     case nextDisplay
 
-    init(_ gesture: Gesture) {
+    init(_ gesture: Gesture, shift: Bool) {
         switch gesture {
         case .swipe(.up): self = .arrange(.fill)
-        case .swipe(.left): self = .arrange(.left)
-        case .swipe(.right): self = .arrange(.right)
+        case .swipe(.left): self = shift ? .pair(.left) : .arrange(.left)
+        case .swipe(.right): self = shift ? .pair(.right) : .arrange(.right)
         case .swipe(.down): self = .nextDisplay
         case .pinchIn: self = .minimize
         }
@@ -26,6 +28,7 @@ enum Plan {
     var name: String {
         switch self {
         case .arrange(let action): action.rawValue
+        case .pair(let side): "pair \(side.rawValue)"
         case .minimize: "minimize"
         case .nextDisplay: "next display"
         }
@@ -34,6 +37,7 @@ enum Plan {
     /// The SF Symbol its preview shows, for a split of `fraction`.
     func symbol(fraction: Double) -> String {
         switch self {
+        case .pair(let side): Plan.arrange(side).symbol(fraction: fraction)
         case .arrange(.fill): "rectangle.inset.filled"
         case .arrange(.left) where fraction < 0.5: "rectangle.leftthird.inset.filled"
         case .arrange(.right) where fraction < 0.5: "rectangle.rightthird.inset.filled"
@@ -65,6 +69,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var tap: SwipeTap?
     private var permissionTimer: Timer?
     private let preview = PreviewOverlay()
+    /// The second panel, for the other window of a pair.
+    private let companionPreview = PreviewOverlay()
     private var splits = SplitCycle()
     private let store = SettingsStore()
     private var settingsWatch: AnyCancellable?
@@ -148,13 +154,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func startTap() {
-        let tap = SwipeTap(onProgress: { [weak self] in self?.preview($0, $1, hold: $2) },
-                           onGesture: { [weak self] in self?.perform($0, $1, hold: $2) })
+        let tap = SwipeTap(onProgress: { [weak self] in self?.preview($0, $1, $2) },
+                           onGesture: { [weak self] in self?.perform($0, $1, $2) })
         tap.apply(settings)
         tap.isEnabled = UserDefaults.standard.bool(forKey: Defaults.enabled)
         if tap.start() {
             self.tap = tap
-            statusLine.title = "↑ fill · ← → split · ↓ next display · pinch minimize"
+            statusLine.title = "↑ fill · ← → split · ⇧← ⇧→ pair · ↓ next display · pinch minimize"
             logger.notice("watching the trackpad")
         } else {
             statusLine.title = "Couldn't watch the trackpad"
@@ -164,14 +170,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Shows where the gesture in progress would put `target`, or hides the
     /// preview when `gesture` is nil.
-    private func preview(_ target: AppWindow?, _ gesture: Gesture?, hold: Int?) {
+    private func preview(_ target: AppWindow?, _ gesture: Gesture?, _ modifiers: Modifiers) {
+        companionPreview.hide()
         guard let target, let gesture,
               settings.showPreviews,
               let window = target.frame else {
             preview.hide()
             return
         }
-        let plan = Plan(gesture)
+        let hold = modifiers.hold
+        let plan = Plan(gesture, shift: modifiers.shift)
         let stages = stageManagerEnabled() ? StageWatcher.shared.frames(waitingUpTo: 0) : nil
         let frame: CGRect
         var fraction = 0.5
@@ -181,6 +189,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 fraction = splits.fraction(action, hold: hold)
                 frame = try actionFrame(action, fraction: fraction, window: window,
                                         displays: currentDisplays(), stages: stages)
+            case .pair(let side):
+                fraction = splits.fraction(side, paired: true, hold: hold)
+                let area = try placement(for: side, window: window, displays: currentDisplays(),
+                                         stages: stages).stage
+                guard target.companion(in: area) != nil else {
+                    preview.hide()
+                    return
+                }
+                let (mine, theirs) = pairFrames(side, fraction: fraction, in: area)
+                frame = mine
+                companionPreview.show(theirs, symbol: Plan.arrange(side.opposite)
+                    .symbol(fraction: 1 - fraction))
             case .nextDisplay:
                 frame = try displayMove(window: window, .next, displays: currentDisplays(),
                                         stages: stages).target
@@ -194,9 +214,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         preview.show(frame, symbol: plan.symbol(fraction: fraction))
     }
 
-    private func perform(_ target: AppWindow, _ gesture: Gesture, hold: Int?) {
+    private func perform(_ target: AppWindow, _ gesture: Gesture, _ modifiers: Modifiers) {
+        let hold = modifiers.hold
         let command = hold != nil
-        let plan = Plan(gesture)
+        let plan = Plan(gesture, shift: modifiers.shift)
         var label = plan.name
         let decide: () throws(ArrangeError) -> Arrangement
         switch plan {
@@ -212,6 +233,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if fraction != 0.5 && action != .fill { label += fraction > 0.5 ? " ⅔" : " ⅓" }
             decide = { () throws(ArrangeError) in
                 try arrangement(action, fraction: fraction, for: target, stageWait: 0.1)
+            }
+        case .pair(let side):
+            let fraction = splits.fraction(side, paired: true, hold: hold)
+            splits.performed(side, paired: true, hold: hold)
+            if fraction != 0.5 { label += fraction > 0.5 ? " ⅔" : " ⅓" }
+            decide = { () throws(ArrangeError) in
+                try pairArrangement(side, fraction: fraction, for: target, stageWait: 0.1)
             }
         }
         let name = label
