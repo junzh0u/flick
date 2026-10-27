@@ -18,8 +18,9 @@ enum Gesture: Equatable {
 /// Watches the trackpad's scroll and magnify events through a session event
 /// tap and reports two-finger swipes and pinches that start on a window's
 /// title bar, or with ⌘ held as they start, anywhere in the window, swallowing
-/// their events so the window never scrolls or zooms. A gesture reports
-/// whether it was a ⌘ gesture.
+/// their events so the window never scrolls or zooms. A ⌘ gesture reports
+/// which ⌘ hold it belongs to, a number that changes each time ⌘ is pressed
+/// anew; other gestures report nil.
 ///
 /// While ⌘ stays held, every ⌘ gesture goes to the window the first one hit,
 /// wherever the pointer is, so a window can be split, filled and sent to
@@ -34,9 +35,11 @@ final class SwipeTap {
     private var command = false
     /// The window ⌘ gestures go to until ⌘ is released.
     private var commandTarget: AppWindow?
+    /// Counts ⌘ holds, so callers can tell gestures of one hold from the next.
+    private var holds = 0
     private var port: CFMachPort?
-    private let onProgress: (AppWindow?, Gesture?, _ command: Bool) -> Void
-    private let onGesture: (AppWindow, Gesture, _ command: Bool) -> Void
+    private let onProgress: (AppWindow?, Gesture?, _ hold: Int?) -> Void
+    private let onGesture: (AppWindow, Gesture, _ hold: Int?) -> Void
     /// The gesture last reported to onProgress.
     private var reported: Gesture?
     private let logger = Logger(subsystem: "info.junz.flick", category: "gesture")
@@ -51,8 +54,8 @@ final class SwipeTap {
     /// `onProgress` hears what the gesture in progress would do whenever it
     /// changes, nil once it ends or falls short; `onGesture`, each one made.
     init(threshold: Double,
-         onProgress: @escaping (AppWindow?, Gesture?, _ command: Bool) -> Void,
-         onGesture: @escaping (AppWindow, Gesture, _ command: Bool) -> Void) {
+         onProgress: @escaping (AppWindow?, Gesture?, _ hold: Int?) -> Void,
+         onGesture: @escaping (AppWindow, Gesture, _ hold: Int?) -> Void) {
         swipes = SwipeRecognizer(threshold: threshold)
         self.onProgress = onProgress
         self.onGesture = onGesture
@@ -154,6 +157,7 @@ final class SwipeTap {
         } else {
             target = AppWindow.window(at: event.location)
             commandTarget = target
+            holds += 1
         }
         return target != nil
     }
@@ -166,19 +170,19 @@ final class SwipeTap {
         if pending != nil {
             NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
         }
-        let (target, command) = (target, command)
+        let (target, hold) = (target, command ? holds : nil)
         // Outside the callback, which must return quickly.
-        Task { @MainActor in self.onProgress(target, pending, command) }
+        Task { @MainActor in self.onProgress(target, pending, hold) }
     }
 
     private func fire(_ gesture: Gesture) {
         guard let target else { return }
-        let command = command
+        let (command, hold) = (command, command ? holds : nil)
         logger.info("""
             \(command ? "⌘ " : "", privacy: .public)\(gesture.name, privacy: .public) on \
             \(target.appName, privacy: .public)'s \(command ? "window" : "title bar", privacy: .public)
             """)
-        Task { @MainActor in self.onGesture(target, gesture, command) }
+        Task { @MainActor in self.onGesture(target, gesture, hold) }
     }
 }
 

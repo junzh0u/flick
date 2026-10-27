@@ -24,16 +24,18 @@ public struct Arrangement: @unchecked Sendable {
     public let summary: String
 }
 
-/// Decides how to carry out `action` on `target`. With Stage Manager off this
-/// is macOS's own Window-menu command; with it on, Fill would cover the strip
-/// of recent apps, so the window instead takes the matching part of its
-/// display's stage — the area beside the strip where macOS itself places new
-/// windows.
+/// Decides how to carry out `action` on `target`, giving it `fraction` of the
+/// area on that side. With Stage Manager off, fills and halves are macOS's own
+/// Window-menu commands; thirds, which macOS has none for, take that part of
+/// the display's visible frame. With it on, Fill would cover the strip of
+/// recent apps, so the window instead takes the matching part of its display's
+/// stage — the area beside the strip where macOS itself places new windows.
 @MainActor
-public func arrangement(_ action: Action, for target: AppWindow,
+public func arrangement(_ action: Action, fraction: Double = 0.5, for target: AppWindow,
                         stageWait: TimeInterval) throws(ArrangeError) -> Arrangement {
     let name = target.appName
-    if !stageManagerEnabled() {
+    let stageManager = stageManagerEnabled()
+    if !stageManager && (action == .fill || fraction == 0.5) {
         let path = (["Window"] + action.menuPath).joined(separator: " → ")
         guard let item = windowMenuItem(target.app, path: action.menuPath) else {
             throw ArrangeError(description: "\(name) has no \(path)")
@@ -46,15 +48,17 @@ public func arrangement(_ action: Action, for target: AppWindow,
     }
     let p: Placement
     do {
-        p = try placement(for: action, window: start, displays: currentDisplays(),
-                          stages: StageWatcher.shared.frames(waitingUpTo: stageWait))
+        p = try placement(for: action, fraction: fraction, window: start,
+                          displays: currentDisplays(),
+                          stages: stageManager ? StageWatcher.shared.frames(waitingUpTo: stageWait) : nil)
     } catch {
         throw ArrangeError(description: error.description)
     }
     return Arrangement(
         step: .move(app: target.app, window: target.window, from: start, to: p.target,
                     fps: p.display.fps, crossesDisplays: false),
-        summary: "\(name): stage \(describe(p.stage)), frame \(describe(p.target))")
+        summary: "\(name): \(stageManager ? "stage" : "visible") \(describe(p.stage)), "
+            + "frame \(describe(p.target))")
 }
 
 /// Decides how to move `target` to the previous or next display, keeping its

@@ -29,10 +29,12 @@ enum Plan {
         }
     }
 
-    /// The SF Symbol its preview shows.
-    var symbol: String {
+    /// The SF Symbol its preview shows, for a split of `fraction`.
+    func symbol(fraction: Double) -> String {
         switch self {
         case .arrange(.fill): "rectangle.inset.filled"
+        case .arrange(.left) where fraction < 0.5: "rectangle.leftthird.inset.filled"
+        case .arrange(.right) where fraction < 0.5: "rectangle.rightthird.inset.filled"
         case .arrange(.left): "rectangle.lefthalf.inset.filled"
         case .arrange(.right): "rectangle.righthalf.inset.filled"
         case .arrange(.top): "rectangle.tophalf.inset.filled"
@@ -65,6 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var tap: SwipeTap?
     private var permissionTimer: Timer?
     private let preview = PreviewOverlay()
+    private var splits = SplitCycle()
     private let statusLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let enabledItem = NSMenuItem(title: "Enabled", action: #selector(toggleEnabled),
                                          keyEquivalent: "")
@@ -137,8 +140,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func startTap() {
         let defaults = UserDefaults.standard
         let tap = SwipeTap(threshold: defaults.double(forKey: Defaults.threshold),
-                           onProgress: { [weak self] target, gesture, _ in self?.preview(target, gesture) },
-                           onGesture: { [weak self] in self?.perform($0, $1, command: $2) })
+                           onProgress: { [weak self] in self?.preview($0, $1, hold: $2) },
+                           onGesture: { [weak self] in self?.perform($0, $1, hold: $2) })
         tap.isEnabled = defaults.bool(forKey: Defaults.enabled)
         if tap.start() {
             self.tap = tap
@@ -152,7 +155,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Shows where the gesture in progress would put `target`, or hides the
     /// preview when `gesture` is nil.
-    private func preview(_ target: AppWindow?, _ gesture: Gesture?) {
+    private func preview(_ target: AppWindow?, _ gesture: Gesture?, hold: Int?) {
         guard let target, let gesture,
               UserDefaults.standard.bool(forKey: Defaults.previews),
               let window = target.frame else {
@@ -162,11 +165,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let plan = Plan(gesture)
         let stages = stageManagerEnabled() ? StageWatcher.shared.frames(waitingUpTo: 0) : nil
         let frame: CGRect
+        var fraction = 0.5
         do {
             switch plan {
             case .arrange(let action):
-                frame = try actionFrame(action, window: window, displays: currentDisplays(),
-                                        stages: stages)
+                fraction = splits.fraction(action, hold: hold)
+                frame = try actionFrame(action, fraction: fraction, window: window,
+                                        displays: currentDisplays(), stages: stages)
             case .nextDisplay:
                 frame = try displayMove(window: window, .next, displays: currentDisplays(),
                                         stages: stages).target
@@ -177,21 +182,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             preview.hide()
             return
         }
-        preview.show(frame, symbol: plan.symbol)
+        preview.show(frame, symbol: plan.symbol(fraction: fraction))
     }
 
-    private func perform(_ target: AppWindow, _ gesture: Gesture, command: Bool) {
+    private func perform(_ target: AppWindow, _ gesture: Gesture, hold: Int?) {
+        let command = hold != nil
         let plan = Plan(gesture)
-        let name = plan.name
+        var label = plan.name
         let decide: () throws(ArrangeError) -> Arrangement
         switch plan {
         case .nextDisplay:
+            splits.performed(nil, hold: hold)
             decide = { () throws(ArrangeError) in try arrangement(.next, for: target, stageWait: 0.1) }
         case .minimize:
+            splits.performed(nil, hold: hold)
             decide = { minimizing(target) }
         case .arrange(let action):
-            decide = { () throws(ArrangeError) in try arrangement(action, for: target, stageWait: 0.1) }
+            let fraction = splits.fraction(action, hold: hold)
+            splits.performed(action, hold: hold)
+            if fraction != 0.5 && action != .fill { label += fraction > 0.5 ? " ⅔" : " ⅓" }
+            decide = { () throws(ArrangeError) in
+                try arrangement(action, fraction: fraction, for: target, stageWait: 0.1)
+            }
         }
+        let name = label
         // Window-menu commands act on the frontmost app's main window, and a
         // window moved to another display should come along to the front;
         // minimizing needs no focus, and raising first would only flash it.

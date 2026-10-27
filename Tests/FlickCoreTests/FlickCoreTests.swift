@@ -152,6 +152,42 @@ private let momentum: [(ScrollPhase, MomentumPhase, Double, Double)] = [
     let external = Display(frame: CGRect(x: 1728, y: -200, width: 2560, height: 1440),
                            visible: CGRect(x: 1728, y: -175, width: 2560, height: 1415), fps: 60)
 
+    @Test func thirdsMeetTheirComplementExactly() {
+        let r = CGRect(x: 10, y: 0, width: 1000, height: 100)
+        let leftThird = Action.left.frame(in: r, fraction: 1.0 / 3)
+        let rightTwoThirds = Action.right.frame(in: r, fraction: 2.0 / 3)
+        #expect(leftThird == CGRect(x: 10, y: 0, width: 333, height: 100))
+        #expect(rightTwoThirds == CGRect(x: 343, y: 0, width: 667, height: 100))
+        let leftTwoThirds = Action.left.frame(in: r, fraction: 2.0 / 3)
+        let rightThird = Action.right.frame(in: r, fraction: 1.0 / 3)
+        #expect(leftTwoThirds.maxX == rightThird.minX)
+    }
+
+    @Test func splitsCycleWithinOneCommandHold() {
+        var cycle = SplitCycle()
+        var seen: [Double] = []
+        for _ in 0..<4 {
+            seen.append(cycle.fraction(.left, hold: 1))
+            cycle.performed(.left, hold: 1)
+        }
+        let expected: [Double] = [1.0 / 2, 2.0 / 3, 1.0 / 3, 1.0 / 2]
+        #expect(seen == expected)
+        #expect(cycle.fraction(.left, hold: 2) == 1.0 / 2)
+        #expect(cycle.fraction(.right, hold: 1) == 1.0 / 2)
+    }
+
+    @Test func splitsDontCycleWithoutCommandOrAcrossOtherActions() {
+        var cycle = SplitCycle()
+        cycle.performed(.left, hold: nil)
+        #expect(cycle.fraction(.left, hold: nil) == 1.0 / 2)
+        cycle.performed(.left, hold: 1)
+        cycle.performed(nil, hold: 1)
+        #expect(cycle.fraction(.left, hold: 1) == 1.0 / 2)
+        cycle.performed(.fill, hold: 1)
+        cycle.performed(.fill, hold: 1)
+        #expect(cycle.fraction(.fill, hold: 1) == 1.0 / 2)
+    }
+
     @Test func actionFrameUsesTheVisibleFrameWithStageManagerOff() throws {
         let window = CGRect(x: 100, y: 100, width: 500, height: 500)
         #expect(try actionFrame(.right, window: window, displays: [display, external], stages: nil)

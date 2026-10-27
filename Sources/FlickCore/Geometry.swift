@@ -16,23 +16,24 @@ public enum Action: String, CaseIterable, Sendable {
         }
     }
 
-    /// The part of `r` this arrangement gives the window. Opposite halves split
-    /// an odd length between them rather than overlap.
-    public func frame(in r: CGRect) -> CGRect {
-        func half(_ length: CGFloat) -> CGFloat { (length / 2).rounded() }
+    /// The part of `r` this arrangement gives the window: `fraction` of it on
+    /// that side (fill ignores it). Complementary parts — opposite halves, a
+    /// third and two thirds — meet exactly rather than overlap.
+    public func frame(in r: CGRect, fraction: Double = 0.5) -> CGRect {
+        func part(_ length: CGFloat, _ f: Double) -> CGFloat { (length * f).rounded() }
         switch self {
         case .fill:
             return r
         case .left:
-            return CGRect(x: r.minX, y: r.minY, width: half(r.width), height: r.height)
+            return CGRect(x: r.minX, y: r.minY, width: part(r.width, fraction), height: r.height)
         case .right:
-            return CGRect(x: r.minX + half(r.width), y: r.minY,
-                          width: r.width - half(r.width), height: r.height)
+            let cut = part(r.width, 1 - fraction)
+            return CGRect(x: r.minX + cut, y: r.minY, width: r.width - cut, height: r.height)
         case .top:
-            return CGRect(x: r.minX, y: r.minY, width: r.width, height: half(r.height))
+            return CGRect(x: r.minX, y: r.minY, width: r.width, height: part(r.height, fraction))
         case .bottom:
-            return CGRect(x: r.minX, y: r.minY + half(r.height),
-                          width: r.width, height: r.height - half(r.height))
+            let cut = part(r.height, 1 - fraction)
+            return CGRect(x: r.minX, y: r.minY + cut, width: r.width, height: r.height - cut)
         }
     }
 }
@@ -121,18 +122,52 @@ public func usableArea(of display: Display, stages: [CGRect]?) throws(PlacementE
 /// display's usable area (see usableArea). With Stage Manager off, macOS's own
 /// command does the arranging; this is where it lands short of any margins
 /// macOS adds between tiled windows.
-public func actionFrame(_ action: Action, window: CGRect, displays: [Display],
-                        stages: [CGRect]?) throws(PlacementError) -> CGRect {
-    action.frame(in: try usableArea(of: try display(of: window, in: displays), stages: stages))
+public func actionFrame(_ action: Action, fraction: Double = 0.5, window: CGRect,
+                        displays: [Display], stages: [CGRect]?) throws(PlacementError) -> CGRect {
+    try placement(for: action, fraction: fraction, window: window, displays: displays,
+                  stages: stages).target
 }
 
-/// Where `action` puts a window now at `window` with Stage Manager on: the
-/// matching part of its display's stage.
-public func placement(for action: Action, window: CGRect, displays: [Display],
-                      stages: [CGRect]) throws(PlacementError) -> Placement {
+/// Where `action` puts a window now at `window`: `fraction` of its display's
+/// usable area on that side (see usableArea).
+public func placement(for action: Action, fraction: Double = 0.5, window: CGRect,
+                      displays: [Display], stages: [CGRect]?) throws(PlacementError) -> Placement {
     let display = try display(of: window, in: displays)
     let usable = try usableArea(of: display, stages: stages)
-    return Placement(display: display, stage: usable, target: action.frame(in: usable))
+    return Placement(display: display, stage: usable,
+                     target: action.frame(in: usable, fraction: fraction))
+}
+
+/// Repeating a split while ⌘ stays held cycles the window through half, two
+/// thirds and one third of the area on that side, as Rectangle does.
+public struct SplitCycle: Sendable {
+    public static let fractions: [Double] = [1.0 / 2, 2.0 / 3, 1.0 / 3]
+
+    private var hold: Int?
+    private var action: Action?
+    private var step = 0
+
+    public init() {}
+
+    /// The fraction `action` gives the window next during ⌘ hold `hold` (nil
+    /// without ⌘): a half, unless it repeats that hold's last split.
+    public func fraction(_ action: Action, hold: Int?) -> Double {
+        Self.fractions[nextStep(action, hold: hold)]
+    }
+
+    /// Records that `action` — nil for anything else — was just performed
+    /// during ⌘ hold `hold`.
+    public mutating func performed(_ action: Action?, hold: Int?) {
+        step = action.map { nextStep($0, hold: hold) } ?? 0
+        self.hold = hold
+        self.action = action
+    }
+
+    private func nextStep(_ action: Action, hold: Int?) -> Int {
+        guard let hold, hold == self.hold, action == self.action,
+              action == .left || action == .right else { return 0 }
+        return (step + 1) % Self.fractions.count
+    }
 }
 
 /// `window`'s frame mapped from `source` to `target` in proportion, so it keeps

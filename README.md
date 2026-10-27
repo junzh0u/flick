@@ -10,7 +10,7 @@ A menu-bar app for macOS that fills, splits, moves or minimizes a window when yo
 | swipe ↓ | move to the next display, keeping its place on screen | same, within the stages |
 | pinch in | minimize to the Dock | minimize to the strip |
 
-While ⌘ stays held, later ⌘ gestures keep going to the window the first one hit, wherever the pointer is, so you can split a window, send it to the next display and fill it there in one go. Releasing ⌘ lets go of it.
+While ⌘ stays held, later ⌘ gestures keep going to the window the first one hit, wherever the pointer is, so you can split a window, send it to the next display and fill it there in one go. Releasing ⌘ lets go of it. Repeating a split in the same hold cycles the window through half, two thirds and one third of that side, as Rectangle does; with Stage Manager off, the thirds take the display's visible frame, since macOS's Window menu has none.
 
 Displays are ordered left to right, wrapping around. A moved window keeps its position and size relative to the area windows are arranged in — the visible frame, or with Stage Manager on, the stage — so a filled window stays filled, a left half stays a left half, and a window in the top-right third stays there.
 
