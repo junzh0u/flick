@@ -4,6 +4,12 @@
 #
 #   ./build.sh [--install]
 #
+# The bundle's FlickSourceRevision records the commit it was built from, with
+# "-dirty" for uncommitted changes, so an installer can tell when the installed
+# app is current:
+#
+#   plutil -extract FlickSourceRevision raw ~/Applications/Flick.app/Contents/Info.plist
+#
 # Signed with flick-local, a self-signed code-signing certificate this creates
 # in the login keychain once. macOS keys the Accessibility grant to the
 # signature's designated requirement — `identifier "info.junz.flick" and
@@ -54,6 +60,8 @@ rm -rf $app
 mkdir -p $app/Contents/MacOS
 cp $bin $app/Contents/MacOS/Flick
 cp Resources/Info.plist $app/Contents/Info.plist
+revision=$(git describe --always --dirty --abbrev=40 --match '' 2>/dev/null || print unknown)
+plutil -insert FlickSourceRevision -string $revision $app/Contents/Info.plist
 print -n 'APPL????' > $app/Contents/PkgInfo
 
 if ! has_identity; then
