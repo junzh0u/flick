@@ -11,9 +11,10 @@ public struct ArrangeError: Error, CustomStringConvertible {
 public struct Arrangement: @unchecked Sendable {
     enum Step {
         case press(AXUIElement)
-        /// Moves the window, easing it there when `animated`.
+        /// Moves the window, easing it there within a display, or jumping it
+        /// to another one when `crossesDisplays`.
         case move(app: AXUIElement, window: AXUIElement, from: CGRect, to: CGRect, fps: Int,
-                  animated: Bool)
+                  crossesDisplays: Bool)
         case minimize(AXUIElement)
     }
 
@@ -52,7 +53,7 @@ public func arrangement(_ action: Action, for target: AppWindow,
     }
     return Arrangement(
         step: .move(app: target.app, window: target.window, from: start, to: p.target,
-                    fps: p.display.fps, animated: true),
+                    fps: p.display.fps, crossesDisplays: false),
         summary: "\(name): stage \(describe(p.stage)), frame \(describe(p.target))")
 }
 
@@ -75,7 +76,7 @@ public func arrangement(_ step: DisplayStep, for target: AppWindow,
     }
     return Arrangement(
         step: .move(app: target.app, window: target.window, from: start, to: p.target,
-                    fps: p.display.fps, animated: false),
+                    fps: p.display.fps, crossesDisplays: true),
         summary: "\(target.appName): \(p.display.name) \(describe(p.stage)), "
             + "frame \(describe(p.target))")
 }
@@ -106,9 +107,10 @@ public func perform(_ arrangement: Arrangement, duration: Double) throws(Arrange
         if result != .success {
             throw ArrangeError(description: "the window can't be minimized (\(result.rawValue))")
         }
-    case let .move(app, window, start, target, fps, animated):
+    case let .move(app, window, start, target, fps, crossesDisplays):
         move(app: app, window: window, from: start, to: target, fps: fps,
-             duration: animated ? duration : 0)
+             duration: crossesDisplays ? 0 : duration)
+        if crossesDisplays { settle(window, at: target) }
     }
 }
 
@@ -174,4 +176,20 @@ private func move(app: AXUIElement, window: AXUIElement, from start: CGRect, to 
     setSize(window, target.size)
     setPosition(window, target.origin)
     setSize(window, target.size)
+}
+
+/// Re-applies `target` to a window just moved to another display until it
+/// holds. macOS updates which display the window is on a moment after its
+/// position changes, and until then a resize is still capped by the old one:
+/// a window moved to a larger display can come out narrower than asked. Gives
+/// up after a few tries, since some windows only take sizes of their own,
+/// such as a terminal's whole character cells.
+private func settle(_ window: AXUIElement, at target: CGRect) {
+    for wait: useconds_t in [25_000, 50_000, 100_000] {
+        guard let now = frame(of: window), now.integral != target.integral else { return }
+        usleep(wait)
+        setSize(window, target.size)
+        setPosition(window, target.origin)
+        setSize(window, target.size)
+    }
 }
