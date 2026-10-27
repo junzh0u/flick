@@ -11,9 +11,9 @@ public struct ArrangeError: Error, CustomStringConvertible {
 public struct Arrangement: @unchecked Sendable {
     enum Step {
         case press(AXUIElement)
-        /// Press the Window-menu item titled this once the app shows it.
-        case pressWhenShown(app: AXUIElement, title: String)
-        case move(app: AXUIElement, window: AXUIElement, from: CGRect, to: CGRect, fps: Int)
+        /// Moves the window, easing it there when `animated`.
+        case move(app: AXUIElement, window: AXUIElement, from: CGRect, to: CGRect, fps: Int,
+                  animated: Bool)
         case minimize(AXUIElement)
     }
 
@@ -50,30 +50,38 @@ public func arrangement(_ action: Action, for target: AppWindow,
     } catch {
         throw ArrangeError(description: error.description)
     }
-    func describe(_ r: CGRect) -> String {
-        "\(Int(r.minX)) \(Int(r.minY)) \(Int(r.width)) \(Int(r.height))"
-    }
     return Arrangement(
         step: .move(app: target.app, window: target.window, from: start, to: p.target,
-                    fps: p.display.fps),
+                    fps: p.display.fps, animated: true),
         summary: "\(name): stage \(describe(p.stage)), frame \(describe(p.target))")
 }
 
-/// Decides how to move `target` to the previous or next display: macOS's own
-/// Window → Move to <display>, which keeps the window's layout and leaves
-/// Stage Manager to place it. macOS lists that item only in the frontmost
-/// app's Window menu, so `target` must be brought to the front first.
+/// Decides how to move `target` to the previous or next display, keeping its
+/// position and size relative to each display's usable area — the stage with
+/// Stage Manager on, else the visible frame — so a filled window stays filled
+/// and a half stays that half. It jumps there, as Window → Move to does.
 @MainActor
-public func arrangement(_ step: DisplayStep, for target: AppWindow) throws(ArrangeError) -> Arrangement {
+public func arrangement(_ step: DisplayStep, for target: AppWindow,
+                        stageWait: TimeInterval) throws(ArrangeError) -> Arrangement {
     guard let start = target.frame else {
         throw ArrangeError(description: "\(target.appName)'s window has no frame")
     }
-    guard let display = neighbor(of: start, step, in: currentDisplays()) else {
-        throw ArrangeError(description: "there is no other display")
+    let stages = stageManagerEnabled() ? StageWatcher.shared.frames(waitingUpTo: stageWait) : nil
+    let p: Placement
+    do {
+        p = try displayMove(window: start, step, displays: currentDisplays(), stages: stages)
+    } catch {
+        throw ArrangeError(description: error.description)
     }
-    let item = "Move to \(display.name)"
-    return Arrangement(step: .pressWhenShown(app: target.app, title: item),
-                       summary: "\(target.appName): Window → \(item)")
+    return Arrangement(
+        step: .move(app: target.app, window: target.window, from: start, to: p.target,
+                    fps: p.display.fps, animated: false),
+        summary: "\(target.appName): \(p.display.name) \(describe(p.stage)), "
+            + "frame \(describe(p.target))")
+}
+
+private func describe(_ r: CGRect) -> String {
+    "\(Int(r.minX)) \(Int(r.minY)) \(Int(r.width)) \(Int(r.height))"
 }
 
 /// Minimizes `target` as its yellow button does: into the Dock, or with Stage
@@ -87,31 +95,20 @@ public func minimizing(_ target: AppWindow) -> Arrangement {
 /// Carries out `arrangement`. macOS has no public way to run its own tiling
 /// animation to an arbitrary frame, so a moved window eases there over
 /// `duration` seconds (0 jumps), the way native tiling does. Blocks for the
-/// animation, or up to `menuWait` for a Window-menu item to show; safe on any
-/// thread.
-public func perform(_ arrangement: Arrangement, duration: Double,
-                    menuWait: TimeInterval = 0.5) throws(ArrangeError) {
+/// animation; safe on any thread.
+public func perform(_ arrangement: Arrangement, duration: Double) throws(ArrangeError) {
     switch arrangement.step {
     case .press(let item):
         AXUIElementPerformAction(item, kAXPressAction as CFString)
-    case let .pressWhenShown(app, title):
-        let deadline = Date(timeIntervalSinceNow: menuWait)
-        while true {
-            if let item = windowMenuItem(app, where: { $0 == title }) {
-                AXUIElementPerformAction(item, kAXPressAction as CFString)
-                return
-            }
-            if Date() >= deadline { throw ArrangeError(description: "no Window → \(title)") }
-            usleep(20_000)
-        }
     case .minimize(let window):
         let result = AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString,
                                                   kCFBooleanTrue)
         if result != .success {
             throw ArrangeError(description: "the window can't be minimized (\(result.rawValue))")
         }
-    case let .move(app, window, start, target, fps):
-        move(app: app, window: window, from: start, to: target, fps: fps, duration: duration)
+    case let .move(app, window, start, target, fps, animated):
+        move(app: app, window: window, from: start, to: target, fps: fps,
+             duration: animated ? duration : 0)
     }
 }
 

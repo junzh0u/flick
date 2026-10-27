@@ -107,7 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if command {
             guard let step = displaySteps[direction] else { return }
             name = "\(step.rawValue) display"
-            decide = { () throws(ArrangeError) in try arrangement(step, for: target) }
+            decide = { () throws(ArrangeError) in try arrangement(step, for: target, stageWait: 0.1) }
         } else if direction == .down {
             name = "minimize"
             decide = { minimizing(target) }
@@ -116,7 +116,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             name = action.rawValue
             decide = { () throws(ArrangeError) in try arrangement(action, for: target, stageWait: 0.1) }
         }
-        // Window-menu commands act on the frontmost app's main window;
+        // Window-menu commands act on the frontmost app's main window, and a
+        // window moved to another display should come along to the front;
         // minimizing needs no focus, and raising first would only flash it.
         if direction != .down || command { target.focus() }
         let logger = logger

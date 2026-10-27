@@ -43,7 +43,7 @@ public struct Display: Equatable, Sendable {
     public let frame: CGRect
     public let visible: CGRect
     public let fps: Int
-    /// The name macOS shows for it, as in Window → Move to <name>.
+    /// The name macOS shows for it, e.g. in System Settings → Displays.
     public let name: String
 
     public init(frame: CGRect, visible: CGRect, fps: Int, name: String = "") {
@@ -72,42 +72,84 @@ public func neighbor(of window: CGRect, _ step: DisplayStep, in displays: [Displ
 
 public struct Placement: Equatable, Sendable {
     public let display: Display
-    /// The stage, kept to the display's visible frame.
+    /// Where windows are arranged on the display (see usableArea).
     public let stage: CGRect
     public let target: CGRect
 }
 
 public enum PlacementError: Error, Equatable, Sendable, CustomStringConvertible {
     case noDisplays
+    case noOtherDisplay
     case noStage
     case stageOutsideVisibleFrame
 
     public var description: String {
         switch self {
         case .noDisplays: "no displays"
+        case .noOtherDisplay: "there is no other display"
         case .noStage: "WindowManager reported no Stage Manager stage for this display"
         case .stageOutsideVisibleFrame: "Stage Manager's stage lies outside the display's visible frame"
         }
     }
 }
 
-/// Where `action` puts a window now at `window` with Stage Manager on: the
-/// matching part of its display's stage. The stage runs under the Dock, so it
-/// is kept to the visible frame the way macOS's own window placement is.
-/// Stages are matched to displays by position, since their IDs match display
-/// IDs only on the built-in display.
-public func placement(for action: Action, window: CGRect, displays: [Display],
-                      stages: [CGRect]) throws(PlacementError) -> Placement {
+/// The display showing the centre of `window`, or else the first.
+func display(of window: CGRect, in displays: [Display]) throws(PlacementError) -> Display {
     let center = CGPoint(x: window.midX, y: window.midY)
     guard let display = displays.first(where: { $0.frame.contains(center) }) ?? displays.first else {
         throw .noDisplays
     }
+    return display
+}
+
+/// Where windows are arranged on `display`: with Stage Manager on (`stages`
+/// given), its stage, kept to the visible frame the way macOS's own window
+/// placement is, since the stage runs under the Dock; otherwise its visible
+/// frame. Stages are matched to displays by position, since their IDs match
+/// display IDs only on the built-in display.
+public func usableArea(of display: Display, stages: [CGRect]?) throws(PlacementError) -> CGRect {
+    guard let stages else { return display.visible }
     guard let stage = stages.first(where: {
         display.frame.contains(CGPoint(x: $0.midX, y: $0.midY))
     }) else { throw .noStage }
     let usable = stage.intersection(display.visible)
     if usable.isNull || usable.isEmpty { throw .stageOutsideVisibleFrame }
+    return usable
+}
+
+/// Where `action` puts a window now at `window` with Stage Manager on: the
+/// matching part of its display's stage.
+public func placement(for action: Action, window: CGRect, displays: [Display],
+                      stages: [CGRect]) throws(PlacementError) -> Placement {
+    let display = try display(of: window, in: displays)
+    let usable = try usableArea(of: display, stages: stages)
     return Placement(display: display, stage: usable, target: action.frame(in: usable))
+}
+
+/// `window`'s frame mapped from `source` to `target` in proportion, so it keeps
+/// its relative position and size: a left half stays a left half. Kept within
+/// `target`, so a window hanging off one display doesn't land off the next.
+public func proportionalFrame(_ window: CGRect, from source: CGRect, to target: CGRect) -> CGRect {
+    let sx = target.width / source.width, sy = target.height / source.height
+    let width = min((window.width * sx).rounded(), target.width)
+    let height = min((window.height * sy).rounded(), target.height)
+    let x = (target.minX + (window.minX - source.minX) * sx).rounded()
+    let y = (target.minY + (window.minY - source.minY) * sy).rounded()
+    return CGRect(x: min(max(x, target.minX), target.maxX - width),
+                  y: min(max(y, target.minY), target.maxY - height),
+                  width: width, height: height)
+}
+
+/// Where `step` moves a window now at `window`: the previous or next display,
+/// at the same position and size relative to each display's usable area.
+public func displayMove(window: CGRect, _ step: DisplayStep, displays: [Display],
+                        stages: [CGRect]?) throws(PlacementError) -> Placement {
+    let source = try display(of: window, in: displays)
+    guard let target = neighbor(of: window, step, in: displays) else { throw .noOtherDisplay }
+    let from = try usableArea(of: source, stages: stages)
+    let to = try usableArea(of: target, stages: stages)
+    return Placement(display: target, stage: to,
+                     target: proportionalFrame(window, from: from, to: to))
 }
 
 /// The title-bar band of a window at `window`. Traffic lights sit centred in

@@ -8,9 +8,9 @@ A menu-bar app for macOS that fills, splits or minimizes a window when you swipe
 | ← | Window → Move & Resize → Left | left half of the stage |
 | → | Window → Move & Resize → Right | right half of the stage |
 | ↓ | minimize to the Dock | minimize to the strip |
-| ⌘← / ⌘→ | Window → Move to <previous / next display> | same |
+| ⌘← / ⌘→ | move to the previous / next display, keeping its place on screen | same, within the stages |
 
-Displays are ordered left to right, wrapping around, so with two displays either direction reaches the other one. Moving between displays is always macOS's own command, which keeps the window's layout and leaves Stage Manager to place it.
+Displays are ordered left to right, wrapping around, so with two displays either direction reaches the other one. A moved window keeps its position and size relative to the area windows are arranged in — the visible frame, or with Stage Manager on, the stage — so a filled window stays filled, a left half stays a left half, and a window in the top-right third stays there.
 
 With Stage Manager off, Flick presses macOS's own Window-menu commands, so windows tile exactly as they would from the menu. With it on, those commands would cover the strip of recent apps, so Flick instead moves the window into the display's *stage*, the area beside the strip where macOS itself places new windows, and eases it there over 0.2 s the way native tiling animates.
 
@@ -65,7 +65,7 @@ shows each recognized swipe, the arrangement it chose, and any failure. Failures
 
 - **Gestures.** A session event tap sees every scroll event before apps do. Trackpad scrolls carry gesture phases (may-begin, began, changed, ended, cancelled, then momentum). `SwipeRecognizer` decides on a gesture's first event whether it started on a title bar, then swallows it through its momentum and classifies the total finger travel when the fingers lift.
 - **Title bars.** An Accessibility hit test finds the topmost window under the pointer, which must be a standard, non-full-screen window. Its title-bar band runs from the window's top edge to twice the close button's depth, because the traffic lights sit centred in whatever the window has there: a plain title bar, a unified toolbar or a tab strip.
-- **Displays.** macOS lists Window → Move to <display> only in the frontmost app's menu, so Flick first brings the swiped window and its app to the front, then waits up to half a second for the item to appear.
+- **Displays.** Rather than pressing Window → Move to <display>, Flick moves the window itself, mapping its frame between the two displays' usable areas in proportion, and jumps there as that command does.
 - **Stages.** Stage Manager's stage frames come from `WMClientWindowManager` in the private WindowManagement framework, the same source AppKit uses to place new windows. The app keeps one client connected, so it always has the current stages. If a macOS update changes that framework, Flick beeps instead of moving the window.
 
 ## Development

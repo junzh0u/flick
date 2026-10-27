@@ -87,7 +87,9 @@ func moveToDisplay(_ args: ArraySlice<String>) -> Never {
     }
     guard let step else { fail(usage) }
     let target = frontmostWindow()
-    run(dryRun, 0) { () throws(ArrangeError) in try arrangement(step, for: target) }
+    run(dryRun, 0) { () throws(ArrangeError) in
+        try arrangement(step, for: target, stageWait: 0.25)
+    }
 }
 
 @MainActor

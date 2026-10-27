@@ -141,6 +141,42 @@ private let momentum: [(ScrollPhase, MomentumPhase, Double, Double)] = [
         #expect(neighbor(of: window, .next, in: [builtIn]) == nil)
     }
 
+    @Test func proportionalFrameKeepsRelativePlaceAndSize() {
+        let from = CGRect(x: 0, y: 0, width: 1000, height: 500)
+        let to = CGRect(x: 2000, y: -100, width: 2000, height: 1500)
+        #expect(proportionalFrame(from, from: from, to: to) == to)
+        #expect(proportionalFrame(CGRect(x: 500, y: 0, width: 500, height: 500), from: from, to: to)
+            == CGRect(x: 3000, y: -100, width: 1000, height: 1500))
+        #expect(proportionalFrame(CGRect(x: 100, y: 50, width: 300, height: 200), from: from, to: to)
+            == CGRect(x: 2200, y: 50, width: 600, height: 600))
+    }
+
+    @Test func proportionalFrameStaysWithinTheTarget() {
+        let from = CGRect(x: 0, y: 0, width: 1000, height: 500)
+        let to = CGRect(x: 2000, y: 0, width: 1000, height: 500)
+        #expect(proportionalFrame(CGRect(x: 900, y: -50, width: 400, height: 600), from: from, to: to)
+            == CGRect(x: 2600, y: 0, width: 400, height: 500))
+    }
+
+    @Test func displayMoveMapsBetweenStagesWithStageManagerOn() throws {
+        let stages = [CGRect(x: 1928, y: -200, width: 2360, height: 1440),
+                      CGRect(x: 218, y: 0, width: 1510, height: 1117)]
+        let leftHalf = CGRect(x: 218, y: 33, width: 755, height: 1084)
+        let p = try displayMove(window: leftHalf, .next, displays: [display, external], stages: stages)
+        #expect(p.display == external)
+        #expect(p.stage == CGRect(x: 1928, y: -175, width: 2360, height: 1415))
+        #expect(p.target == CGRect(x: 1928, y: -175, width: 1180, height: 1415))
+    }
+
+    @Test func displayMoveUsesVisibleFramesWithStageManagerOff() throws {
+        let p = try displayMove(window: display.visible, .previous, displays: [display, external],
+                                stages: nil)
+        #expect(p.target == external.visible)
+        #expect(throws: PlacementError.noOtherDisplay) {
+            try displayMove(window: display.visible, .next, displays: [display], stages: nil)
+        }
+    }
+
     @Test func titleBarBandIsTwiceTheCloseButtonsDepth() {
         let window = CGRect(x: 100, y: 200, width: 800, height: 600)
         let unifiedToolbar = CGRect(x: 120, y: 219, width: 14, height: 14)
