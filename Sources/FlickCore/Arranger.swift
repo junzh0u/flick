@@ -14,6 +14,7 @@ public struct Arrangement: @unchecked Sendable {
         /// Press the Window-menu item titled this once the app shows it.
         case pressWhenShown(app: AXUIElement, title: String)
         case move(app: AXUIElement, window: AXUIElement, from: CGRect, to: CGRect, fps: Int)
+        case minimize(AXUIElement)
     }
 
     let step: Step
@@ -75,6 +76,14 @@ public func arrangement(_ step: DisplayStep, for target: AppWindow) throws(Arran
                        summary: "\(target.appName): Window → \(item)")
 }
 
+/// Minimizes `target` as its yellow button does: into the Dock, or with Stage
+/// Manager on, into the strip of recent apps — where the window keeps
+/// reporting itself as not minimized. It works on any window that can be
+/// minimized, frontmost or not, without a Window menu.
+public func minimizing(_ target: AppWindow) -> Arrangement {
+    Arrangement(step: .minimize(target.window), summary: "\(target.appName): minimize")
+}
+
 /// Carries out `arrangement`. macOS has no public way to run its own tiling
 /// animation to an arbitrary frame, so a moved window eases there over
 /// `duration` seconds (0 jumps), the way native tiling does. Blocks for the
@@ -94,6 +103,12 @@ public func perform(_ arrangement: Arrangement, duration: Double,
             }
             if Date() >= deadline { throw ArrangeError(description: "no Window → \(title)") }
             usleep(20_000)
+        }
+    case .minimize(let window):
+        let result = AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString,
+                                                  kCFBooleanTrue)
+        if result != .success {
+            throw ArrangeError(description: "the window can't be minimized (\(result.rawValue))")
         }
     case let .move(app, window, start, target, fps):
         move(app: app, window: window, from: start, to: target, fps: fps, duration: duration)

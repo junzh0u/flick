@@ -3,8 +3,9 @@ import FlickCore
 import os
 import ServiceManagement
 
-/// Which arrangement each swipe performs, and with ⌘ held, which way it moves
-/// the window between displays; a swipe without one does nothing.
+/// Which arrangement each swipe performs — swiping down minimizes — and with ⌘
+/// held, which way it moves the window between displays; a swipe without one
+/// does nothing.
 let actions: [SwipeDirection: Action] = [.up: .fill, .left: .left, .right: .right]
 let displaySteps: [SwipeDirection: DisplayStep] = [.left: .previous, .right: .next]
 
@@ -92,7 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         tap.isEnabled = defaults.bool(forKey: Defaults.enabled)
         if tap.start() {
             self.tap = tap
-            statusLine.title = "Swipe on a title bar: ↑ fill, ← → split, ⌘← ⌘→ display"
+            statusLine.title = "Swipe on a title bar: ↑ fill, ↓ minimize, ← → split, ⌘← ⌘→ display"
             logger.notice("watching the trackpad")
         } else {
             statusLine.title = "Couldn't watch the trackpad"
@@ -107,12 +108,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let step = displaySteps[direction] else { return }
             name = "\(step.rawValue) display"
             decide = { () throws(ArrangeError) in try arrangement(step, for: target) }
+        } else if direction == .down {
+            name = "minimize"
+            decide = { minimizing(target) }
         } else {
             guard let action = actions[direction] else { return }
             name = action.rawValue
             decide = { () throws(ArrangeError) in try arrangement(action, for: target, stageWait: 0.1) }
         }
-        target.focus()
+        // Window-menu commands act on the frontmost app's main window;
+        // minimizing needs no focus, and raising first would only flash it.
+        if direction != .down || command { target.focus() }
         let logger = logger
         do {
             let arrangement = try decide()

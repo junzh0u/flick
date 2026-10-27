@@ -1,12 +1,13 @@
 # Flick
 
-A menu-bar app for macOS that fills or splits a window when you swipe two fingers across its title bar, and stays out of the way of Stage Manager. Hold ⌘ while swiping left or right to move the window to the previous or next display.
+A menu-bar app for macOS that fills, splits or minimizes a window when you swipe two fingers across its title bar, and stays out of the way of Stage Manager. Hold ⌘ while swiping left or right to move the window to the previous or next display.
 
 | Swipe on a title bar | Stage Manager off | Stage Manager on |
 | --- | --- | --- |
 | ↑ | Window → Fill | fill the stage |
 | ← | Window → Move & Resize → Left | left half of the stage |
 | → | Window → Move & Resize → Right | right half of the stage |
+| ↓ | minimize to the Dock | minimize to the strip |
 | ⌘← / ⌘→ | Window → Move to <previous / next display> | same |
 
 Displays are ordered left to right, wrapping around, so with two displays either direction reaches the other one. Moving between displays is always macOS's own command, which keeps the window's layout and leaves Stage Manager to place it.
@@ -45,6 +46,7 @@ FLICK=~/Applications/Flick.app/Contents/MacOS/Flick
 $FLICK fill [--dry-run] [--duration SECONDS]
 $FLICK tile [--dry-run] [--duration SECONDS] left|right|top|bottom
 $FLICK display [--dry-run] previous|next
+$FLICK minimize [--dry-run]
 $FLICK probe X Y    # is there a title bar at this point (global, top-left origin)?
 ```
 

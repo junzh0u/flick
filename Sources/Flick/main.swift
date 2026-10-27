@@ -1,10 +1,12 @@
-// Flick: two-finger swipes on a window's title bar fill or split the window,
-// Stage Manager-aware, or with ⌘ move it to the previous or next display.
+// Flick: two-finger swipes on a window's title bar fill, split or minimize the
+// window, Stage Manager-aware, or with ⌘ move it to the previous or next
+// display.
 //
 //   flick                                   run the menu-bar app
 //   flick fill [--dry-run] [--duration S]   fill the focused window
 //   flick tile [--dry-run] [--duration S] left|right|top|bottom
 //   flick display [--dry-run] previous|next move it to another display
+//   flick minimize [--dry-run]              minimize it
 //   flick probe X Y                         is there a title bar at X Y?
 //
 // The commands act once and exit; they need Accessibility permission for
@@ -18,6 +20,7 @@ let usage = """
            flick fill [--dry-run] [--duration SECONDS]
            flick tile [--dry-run] [--duration SECONDS] left|right|top|bottom
            flick display [--dry-run] previous|next
+           flick minimize [--dry-run]
            flick probe X Y
     """
 
@@ -75,6 +78,18 @@ func moveToDisplay(_ args: ArraySlice<String>) -> Never {
     run(dryRun, 0) { () throws(ArrangeError) in try arrangement(step, for: target) }
 }
 
+@MainActor
+func minimizeFrontmost(_ args: ArraySlice<String>) -> Never {
+    var dryRun = false
+    for arg in args {
+        guard arg == "--dry-run" else { fail("unknown argument \(arg)\n\(usage)") }
+        dryRun = true
+    }
+    guard AXIsProcessTrusted() else { fail("needs Accessibility permission") }
+    guard let target = AppWindow.frontmost() else { fail("the frontmost app has no focused window") }
+    run(dryRun, 0) { minimizing(target) }
+}
+
 func run(_ dryRun: Bool, _ duration: Double,
          _ decide: () throws(ArrangeError) -> Arrangement) -> Never {
     do {
@@ -111,6 +126,7 @@ if let command = args.first, !command.hasPrefix("-") {
     switch command {
     case "fill", "tile": arrangeFrontmost(command, args)
     case "display": moveToDisplay(args)
+    case "minimize": minimizeFrontmost(args)
     case "probe": probe(args)
     default: fail(usage)
     }
