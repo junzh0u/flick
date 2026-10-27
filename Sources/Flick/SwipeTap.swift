@@ -161,6 +161,11 @@ final class SwipeTap {
     private func report(_ pending: Gesture?) {
         guard pending != reported else { return }
         reported = pending
+        // A tick under the fingers each time the gesture's action appears or
+        // changes, as the preview moves.
+        if pending != nil {
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        }
         let (target, command) = (target, command)
         // Outside the callback, which must return quickly.
         Task { @MainActor in self.onProgress(target, pending, command) }

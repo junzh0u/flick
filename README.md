@@ -16,7 +16,7 @@ Displays are ordered left to right, wrapping around. A moved window keeps its po
 
 With Stage Manager off, Flick presses macOS's own Window-menu commands, so windows tile exactly as they would from the menu. With it on, those commands would cover the strip of recent apps, so Flick instead moves the window into the display's *stage*, the area beside the strip where macOS itself places new windows, and eases it there over 0.2 s the way native tiling animates.
 
-The swipe is decided when your fingers lift, so you can still change direction or back out mid-swipe. Until then a frosted preview shows where the window will go, with a symbol for the action, and follows the swipe as it changes direction. A pinch likewise fires when the fingers lift, closed far enough. Every event of a gesture Flick takes, including a swipe's momentum, is swallowed, so the window never scrolls or zooms; with ⌘ held, that includes ⌘-scrolling and pinching within windows. Gestures that start elsewhere, and those with ⌥, ⌃ or ⇧ held, pass through untouched.
+The swipe is decided when your fingers lift, so you can still change direction or back out mid-swipe. Until then a frosted preview shows where the window will go, with a symbol for the action, and follows the swipe as it changes direction; a Force Touch trackpad ticks each time it does. A pinch likewise fires when the fingers lift, closed far enough. Every event of a gesture Flick takes, including a swipe's momentum, is swallowed, so the window never scrolls or zooms; with ⌘ held, that includes ⌘-scrolling and pinching within windows. Gestures that start elsewhere, and those with ⌥, ⌃ or ⇧ held, pass through untouched.
 
 ## Install
 
