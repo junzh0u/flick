@@ -8,6 +8,7 @@
 //   flick display [--dry-run] previous|next move it to another display
 //   flick minimize [--dry-run]              minimize it
 //   flick probe X Y                         is there a title bar at X Y?
+//   flick launch-at-login [on|off]          show or set Launch at Login
 //
 // The commands act on the frontmost app's window once and exit, so a
 // keyboard remapper can bind them; they need Accessibility permission for
@@ -17,6 +18,7 @@
 import AppKit
 import AudioToolbox
 import FlickCore
+import ServiceManagement
 
 let usage = """
     usage: flick
@@ -25,6 +27,7 @@ let usage = """
            flick display [--dry-run] previous|next
            flick minimize [--dry-run]
            flick probe X Y
+           flick launch-at-login [on|off]
     """
 
 func fail(_ message: String) -> Never {
@@ -140,6 +143,41 @@ func probe(_ args: ArraySlice<String>) -> Never {
     exit(0)
 }
 
+/// Shows or sets whether Flick.app opens at login, as its menu's Launch at
+/// Login does. Only works from the executable inside Flick.app.
+func launchAtLogin(_ args: ArraySlice<String>) -> Never {
+    guard args.count <= 1 else { fail(usage) }
+    guard Bundle.main.bundleURL.pathExtension == "app" else {
+        fail("launch-at-login only works from the executable inside Flick.app")
+    }
+    let service = SMAppService.mainApp
+    func describe() -> String {
+        switch service.status {
+        case .enabled: "on"
+        // .notFound until the app first registers.
+        case .notRegistered, .notFound: "off"
+        case .requiresApproval: "requires approval in System Settings → General → Login Items"
+        @unknown default: "unknown"
+        }
+    }
+    guard let wanted = args.first else {
+        print(describe())
+        exit(0)
+    }
+    guard wanted == "on" || wanted == "off" else { fail(usage) }
+    do {
+        if wanted == "on" && service.status != .enabled {
+            try service.register()
+        } else if wanted == "off" && service.status == .enabled {
+            try service.unregister()
+        }
+    } catch {
+        fail("Launch at Login: \(error.localizedDescription)")
+    }
+    print(describe())
+    exit(0)
+}
+
 var args = CommandLine.arguments.dropFirst()
 // Launched as an app, the arguments are empty or macOS's own -flags.
 if let command = args.first, !command.hasPrefix("-") {
@@ -149,6 +187,7 @@ if let command = args.first, !command.hasPrefix("-") {
     case "display": moveToDisplay(args)
     case "minimize": minimizeFrontmost(args)
     case "probe": probe(args)
+    case "launch-at-login": launchAtLogin(args)
     default: fail(usage)
     }
 }

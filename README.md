@@ -24,7 +24,7 @@ Requires macOS 14 or later and Xcode (or its command-line tools) for Swift 6.
 ./build.sh --install
 ```
 
-This builds `build/Flick.app`, copies it to `~/Applications`, and launches it. On first launch, grant Flick **Accessibility** under System Settings → Privacy & Security; it starts watching the trackpad as soon as the permission arrives. Turn on **Launch at Login** from its menu-bar icon.
+This builds `build/Flick.app`, copies it to `~/Applications`, and launches it. On first launch, grant Flick **Accessibility** under System Settings → Privacy & Security; it starts watching the trackpad as soon as the permission arrives. Turn on **Launch at Login** from its menu-bar icon, or with `launch-at-login on` (see [Command line](#command-line)).
 
 The bundle is signed with `flick-local`, a self-signed code-signing certificate `build.sh` creates in your login keychain on first run. macOS ties the Accessibility grant to that signature rather than to a specific build, so rebuilding keeps the permission; an ad-hoc signature would lose it on every build.
 
@@ -48,6 +48,7 @@ $FLICK tile [--dry-run] [--duration SECONDS] left|right|top|bottom
 $FLICK display [--dry-run] previous|next
 $FLICK minimize [--dry-run]
 $FLICK probe X Y    # is there a title bar at this point (global, top-left origin)?
+$FLICK launch-at-login [on|off]    # show or set Launch at Login, e.g. from a setup script
 ```
 
 These need Accessibility permission for whatever runs them, such as your terminal or a keyboard remapper. `--dry-run` prints what it would do instead of doing it. A command that can't do its job also plays the alert sound, since remappers usually drop its error message.

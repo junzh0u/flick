@@ -31,7 +31,8 @@ local usage="flick: usage: flick
        flick tile [--dry-run] [--duration SECONDS] left|right|top|bottom
        flick display [--dry-run] previous|next
        flick minimize [--dry-run]
-       flick probe X Y"
+       flick probe X Y
+       flick launch-at-login [on|off]"
 
 print "commands:"
 local out
@@ -51,6 +52,10 @@ $bin display sideways &>/dev/null
 assert_eq "display with an unknown direction exits 1" 1 $?
 $bin probe 1 &>/dev/null
 assert_eq "probe needs X and Y" 1 $?
+out=$($bin launch-at-login maybe 2>&1)
+assert_eq "launch-at-login takes on or off" $usage "$out"
+$bin launch-at-login on off &>/dev/null
+assert_eq "launch-at-login takes one setting" 1 $?
 
 print "options:"
 out=$($bin fill --bogus 2>&1)
