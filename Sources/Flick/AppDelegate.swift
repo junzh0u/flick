@@ -3,8 +3,10 @@ import FlickCore
 import os
 import ServiceManagement
 
-/// Which arrangement each swipe performs; a swipe without one does nothing.
+/// Which arrangement each swipe performs, and with ⌘ held, which way it moves
+/// the window between displays; a swipe without one does nothing.
 let actions: [SwipeDirection: Action] = [.up: .fill, .left: .left, .right: .right]
+let displaySteps: [SwipeDirection: DisplayStep] = [.left: .previous, .right: .next]
 
 enum Defaults {
     static let enabled = "Enabled"
@@ -85,12 +87,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func startTap() {
         let defaults = UserDefaults.standard
         let tap = SwipeTap(threshold: defaults.double(forKey: Defaults.threshold)) { [weak self] in
-            self?.swiped($0, $1)
+            self?.swiped($0, $1, command: $2)
         }
         tap.isEnabled = defaults.bool(forKey: Defaults.enabled)
         if tap.start() {
             self.tap = tap
-            statusLine.title = "Swipe on a title bar: ↑ fill, ← → split"
+            statusLine.title = "Swipe on a title bar: ↑ fill, ← → split, ⌘← ⌘→ display"
             logger.notice("watching the trackpad")
         } else {
             statusLine.title = "Couldn't watch the trackpad"
@@ -98,16 +100,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func swiped(_ target: AppWindow, _ direction: SwipeDirection) {
-        guard let action = actions[direction] else { return }
+    private func swiped(_ target: AppWindow, _ direction: SwipeDirection, command: Bool) {
+        let name: String
+        let decide: () throws(ArrangeError) -> Arrangement
+        if command {
+            guard let step = displaySteps[direction] else { return }
+            name = "\(step.rawValue) display"
+            decide = { () throws(ArrangeError) in try arrangement(step, for: target) }
+        } else {
+            guard let action = actions[direction] else { return }
+            name = action.rawValue
+            decide = { () throws(ArrangeError) in try arrangement(action, for: target, stageWait: 0.1) }
+        }
         target.focus()
+        let logger = logger
         do {
-            let arrangement = try arrangement(action, for: target, stageWait: 0.1)
-            logger.info("\(action.rawValue, privacy: .public): \(arrangement.summary, privacy: .public)")
+            let arrangement = try decide()
+            logger.info("\(name, privacy: .public): \(arrangement.summary, privacy: .public)")
             let duration = UserDefaults.standard.double(forKey: Defaults.duration)
-            worker.async { FlickCore.perform(arrangement, duration: duration) }
+            worker.async {
+                do {
+                    try FlickCore.perform(arrangement, duration: duration)
+                } catch {
+                    logger.error("\(name, privacy: .public): \(String(describing: error), privacy: .public)")
+                    DispatchQueue.main.async { NSSound.beep() }
+                }
+            }
         } catch {
-            logger.error("\(action.rawValue, privacy: .public): \(error.description, privacy: .public)")
+            logger.error("\(name, privacy: .public): \(error.description, privacy: .public)")
             NSSound.beep()
         }
     }

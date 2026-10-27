@@ -1,9 +1,10 @@
 // Flick: two-finger swipes on a window's title bar fill or split the window,
-// Stage Manager-aware.
+// Stage Manager-aware, or with ⌘ move it to the previous or next display.
 //
 //   flick                                   run the menu-bar app
 //   flick fill [--dry-run] [--duration S]   fill the focused window
 //   flick tile [--dry-run] [--duration S] left|right|top|bottom
+//   flick display [--dry-run] previous|next move it to another display
 //   flick probe X Y                         is there a title bar at X Y?
 //
 // The commands act once and exit; they need Accessibility permission for
@@ -16,6 +17,7 @@ let usage = """
     usage: flick
            flick fill [--dry-run] [--duration SECONDS]
            flick tile [--dry-run] [--duration SECONDS] left|right|top|bottom
+           flick display [--dry-run] previous|next
            flick probe X Y
     """
 
@@ -49,12 +51,38 @@ func arrangeFrontmost(_ command: String, _ args: ArraySlice<String>) -> Never {
     guard let action else { fail(usage) }
     guard AXIsProcessTrusted() else { fail("needs Accessibility permission") }
     guard let target = AppWindow.frontmost() else { fail("the frontmost app has no focused window") }
+    run(dryRun, duration) { () throws(ArrangeError) in
+        try arrangement(action, for: target, stageWait: 0.25)
+    }
+}
+
+@MainActor
+func moveToDisplay(_ args: ArraySlice<String>) -> Never {
+    var dryRun = false
+    var step: DisplayStep?
+    for arg in args {
+        if arg == "--dry-run" {
+            dryRun = true
+        } else if step == nil, let value = DisplayStep(rawValue: arg) {
+            step = value
+        } else {
+            fail("unknown argument \(arg)\n\(usage)")
+        }
+    }
+    guard let step else { fail(usage) }
+    guard AXIsProcessTrusted() else { fail("needs Accessibility permission") }
+    guard let target = AppWindow.frontmost() else { fail("the frontmost app has no focused window") }
+    run(dryRun, 0) { () throws(ArrangeError) in try arrangement(step, for: target) }
+}
+
+func run(_ dryRun: Bool, _ duration: Double,
+         _ decide: () throws(ArrangeError) -> Arrangement) -> Never {
     do {
-        let arrangement = try arrangement(action, for: target, stageWait: 0.25)
+        let arrangement = try decide()
         if dryRun {
             print(arrangement.summary)
         } else {
-            perform(arrangement, duration: duration)
+            try perform(arrangement, duration: duration)
         }
     } catch {
         fail(error.description)
@@ -82,6 +110,7 @@ if let command = args.first, !command.hasPrefix("-") {
     args = args.dropFirst()
     switch command {
     case "fill", "tile": arrangeFrontmost(command, args)
+    case "display": moveToDisplay(args)
     case "probe": probe(args)
     default: fail(usage)
     }

@@ -4,7 +4,8 @@ import os
 
 /// Watches the trackpad's scroll events through a session event tap and
 /// reports two-finger swipes that start on a window's title bar, swallowing
-/// their events so the window never scrolls.
+/// their events so the window never scrolls. A swipe reports whether ⌘ was
+/// held as the fingers lifted.
 @MainActor
 final class SwipeTap {
     var isEnabled = true
@@ -12,10 +13,10 @@ final class SwipeTap {
     private var recognizer: SwipeRecognizer
     private var target: AppWindow?
     private var port: CFMachPort?
-    private let onSwipe: (AppWindow, SwipeDirection) -> Void
+    private let onSwipe: (AppWindow, SwipeDirection, _ command: Bool) -> Void
     private let logger = Logger(subsystem: "info.junz.flick", category: "gesture")
 
-    init(threshold: Double, onSwipe: @escaping (AppWindow, SwipeDirection) -> Void) {
+    init(threshold: Double, onSwipe: @escaping (AppWindow, SwipeDirection, _ command: Bool) -> Void) {
         recognizer = SwipeRecognizer(threshold: threshold)
         self.onSwipe = onSwipe
     }
@@ -63,9 +64,10 @@ final class SwipeTap {
             inverted: scroll.isDirectionInvertedFromDevice
         ) {
             target = nil
-            // Modified scrolls (zoom, horizontal scroll) keep their meaning.
+            // Scrolls with other modifiers (zoom, horizontal scroll) keep
+            // their meaning; ⌘ picks the display moves.
             guard isEnabled, event.flags.isDisjoint(with: [
-                .maskCommand, .maskAlternate, .maskControl, .maskShift,
+                .maskAlternate, .maskControl, .maskShift,
             ]) else { return false }
             target = AppWindow.titleBar(at: event.location)
             return target != nil
@@ -78,13 +80,14 @@ final class SwipeTap {
             return false
         case .fire(let direction):
             if let target {
+                let command = event.flags.contains(.maskCommand)
                 logger.info("""
-                    swipe \(direction.rawValue, privacy: .public) on \
-                    \(target.appName, privacy: .public)'s title bar \
+                    swipe \(command ? "⌘" : "", privacy: .public)\(direction.rawValue, privacy: .public) \
+                    on \(target.appName, privacy: .public)'s title bar \
                     (natural scrolling \(scroll.isDirectionInvertedFromDevice, privacy: .public))
                     """)
                 // Outside the callback, which must return quickly.
-                Task { @MainActor in self.onSwipe(target, direction) }
+                Task { @MainActor in self.onSwipe(target, direction, command) }
             }
             return false
         }

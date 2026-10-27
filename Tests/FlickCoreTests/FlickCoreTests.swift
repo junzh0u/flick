@@ -126,6 +126,21 @@ private let momentum: [(ScrollPhase, MomentumPhase, Double, Double)] = [
         }
     }
 
+    @Test func neighborsRunLeftToRightAndWrap() {
+        let left = Display(frame: CGRect(x: -1920, y: 0, width: 1920, height: 1080),
+                           visible: .zero, fps: 60, name: "left")
+        let builtIn = Display(frame: display.frame, visible: display.visible, fps: 120, name: "built-in")
+        let right = Display(frame: CGRect(x: 1728, y: 0, width: 2560, height: 1440),
+                            visible: .zero, fps: 60, name: "right")
+        let displays = [builtIn, right, left]
+        let window = CGRect(x: 100, y: 100, width: 500, height: 500)
+        #expect(neighbor(of: window, .next, in: displays)?.name == "right")
+        #expect(neighbor(of: window, .previous, in: displays)?.name == "left")
+        let onRight = window.offsetBy(dx: 2000, dy: 0)
+        #expect(neighbor(of: onRight, .next, in: displays)?.name == "left")
+        #expect(neighbor(of: window, .next, in: [builtIn]) == nil)
+    }
+
     @Test func titleBarBandIsTwiceTheCloseButtonsDepth() {
         let window = CGRect(x: 100, y: 200, width: 800, height: 600)
         let unifiedToolbar = CGRect(x: 120, y: 219, width: 14, height: 14)

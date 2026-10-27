@@ -43,12 +43,31 @@ public struct Display: Equatable, Sendable {
     public let frame: CGRect
     public let visible: CGRect
     public let fps: Int
+    /// The name macOS shows for it, as in Window → Move to <name>.
+    public let name: String
 
-    public init(frame: CGRect, visible: CGRect, fps: Int) {
+    public init(frame: CGRect, visible: CGRect, fps: Int, name: String = "") {
         self.frame = frame
         self.visible = visible
         self.fps = fps
+        self.name = name
     }
+}
+
+public enum DisplayStep: String, CaseIterable, Sendable {
+    case previous, next
+}
+
+/// The display before or after the one showing `window`, in left-to-right
+/// order (top to bottom where they line up), wrapping around. Nil with fewer
+/// than two displays.
+public func neighbor(of window: CGRect, _ step: DisplayStep, in displays: [Display]) -> Display? {
+    guard displays.count > 1 else { return nil }
+    let ordered = displays.sorted { ($0.frame.midX, $0.frame.midY) < ($1.frame.midX, $1.frame.midY) }
+    let center = CGPoint(x: window.midX, y: window.midY)
+    let current = ordered.firstIndex(where: { $0.frame.contains(center) }) ?? 0
+    let offset = step == .next ? 1 : ordered.count - 1
+    return ordered[(current + offset) % ordered.count]
 }
 
 public struct Placement: Equatable, Sendable {

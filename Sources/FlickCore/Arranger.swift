@@ -1,5 +1,6 @@
 import ApplicationServices
 import Darwin
+import Foundation
 import QuartzCore
 
 public struct ArrangeError: Error, CustomStringConvertible {
@@ -10,6 +11,8 @@ public struct ArrangeError: Error, CustomStringConvertible {
 public struct Arrangement: @unchecked Sendable {
     enum Step {
         case press(AXUIElement)
+        /// Press the Window-menu item titled this once the app shows it.
+        case pressWhenShown(app: AXUIElement, title: String)
         case move(app: AXUIElement, window: AXUIElement, from: CGRect, to: CGRect, fps: Int)
     }
 
@@ -55,14 +58,43 @@ public func arrangement(_ action: Action, for target: AppWindow,
         summary: "\(name): stage \(describe(p.stage)), frame \(describe(p.target))")
 }
 
+/// Decides how to move `target` to the previous or next display: macOS's own
+/// Window → Move to <display>, which keeps the window's layout and leaves
+/// Stage Manager to place it. macOS lists that item only in the frontmost
+/// app's Window menu, so `target` must be brought to the front first.
+@MainActor
+public func arrangement(_ step: DisplayStep, for target: AppWindow) throws(ArrangeError) -> Arrangement {
+    guard let start = target.frame else {
+        throw ArrangeError(description: "\(target.appName)'s window has no frame")
+    }
+    guard let display = neighbor(of: start, step, in: currentDisplays()) else {
+        throw ArrangeError(description: "there is no other display")
+    }
+    let item = "Move to \(display.name)"
+    return Arrangement(step: .pressWhenShown(app: target.app, title: item),
+                       summary: "\(target.appName): Window → \(item)")
+}
+
 /// Carries out `arrangement`. macOS has no public way to run its own tiling
 /// animation to an arbitrary frame, so a moved window eases there over
 /// `duration` seconds (0 jumps), the way native tiling does. Blocks for the
-/// animation; safe on any thread.
-public func perform(_ arrangement: Arrangement, duration: Double) {
+/// animation, or up to `menuWait` for a Window-menu item to show; safe on any
+/// thread.
+public func perform(_ arrangement: Arrangement, duration: Double,
+                    menuWait: TimeInterval = 0.5) throws(ArrangeError) {
     switch arrangement.step {
     case .press(let item):
         AXUIElementPerformAction(item, kAXPressAction as CFString)
+    case let .pressWhenShown(app, title):
+        let deadline = Date(timeIntervalSinceNow: menuWait)
+        while true {
+            if let item = windowMenuItem(app, where: { $0 == title }) {
+                AXUIElementPerformAction(item, kAXPressAction as CFString)
+                return
+            }
+            if Date() >= deadline { throw ArrangeError(description: "no Window → \(title)") }
+            usleep(20_000)
+        }
     case let .move(app, window, start, target, fps):
         move(app: app, window: window, from: start, to: target, fps: fps, duration: duration)
     }

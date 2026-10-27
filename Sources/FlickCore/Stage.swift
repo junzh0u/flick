@@ -19,7 +19,7 @@ public func currentDisplays() -> [Display] {
     }
     return screens.map {
         Display(frame: flip($0.frame), visible: flip($0.visibleFrame),
-                fps: max($0.maximumFramesPerSecond, 60))
+                fps: max($0.maximumFramesPerSecond, 60), name: $0.localizedName)
     }
 }
 
