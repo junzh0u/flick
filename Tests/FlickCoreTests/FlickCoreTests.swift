@@ -177,6 +177,12 @@ private let momentum: [(ScrollPhase, MomentumPhase, Double, Double)] = [
         }
     }
 
+    @Test func pointerMovesToTheTitleBarsMiddleOnlyWhenOutsideIt() {
+        let band = CGRect(x: 100, y: 200, width: 801, height: 52)
+        #expect(pointerTarget(CGPoint(x: 150, y: 210), titleBar: band) == nil)
+        #expect(pointerTarget(CGPoint(x: 150, y: 400), titleBar: band) == CGPoint(x: 501, y: 226))
+    }
+
     @Test func titleBarBandIsTwiceTheCloseButtonsDepth() {
         let window = CGRect(x: 100, y: 200, width: 800, height: 600)
         let unifiedToolbar = CGRect(x: 120, y: 219, width: 14, height: 14)

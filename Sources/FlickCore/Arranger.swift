@@ -112,6 +112,32 @@ public func perform(_ arrangement: Arrangement, duration: Double) throws(Arrange
     }
 }
 
+/// Once `target`'s window stops moving — macOS animates its own tiling for a
+/// moment after the menu item is pressed — moves the pointer to the middle of
+/// the window's title bar if it has ended up outside it, so the next swipe can
+/// start where the last one did. Gives up waiting after `timeout`. Blocks; safe
+/// on any thread.
+public func keepPointerOnTitleBar(of target: AppWindow, timeout: TimeInterval = 1) {
+    let deadline = Date(timeIntervalSinceNow: timeout)
+    var last = target.frame
+    var unchanged = 0
+    while unchanged < 3 && Date() < deadline {
+        usleep(50_000)
+        let now = target.frame
+        if now == last {
+            unchanged += 1
+        } else {
+            unchanged = 0
+            last = now
+        }
+    }
+    guard let band = target.titleBar, let pointer = CGEvent(source: nil)?.location,
+          let destination = pointerTarget(pointer, titleBar: band) else { return }
+    CGWarpMouseCursorPosition(destination)
+    // Warping otherwise holds the pointer still for a moment.
+    CGAssociateMouseAndMouseCursorPosition(1)
+}
+
 private func move(app: AXUIElement, window: AXUIElement, from start: CGRect, to target: CGRect,
                   fps: Int, duration: Double) {
     // Apps that turn on AXEnhancedUserInterface (Chromium and Electron do for

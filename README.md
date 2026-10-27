@@ -30,7 +30,7 @@ The bundle is signed with `flick-local`, a self-signed code-signing certificate 
 
 ## Settings
 
-The menu-bar icon toggles Flick on and off and controls Launch at Login. Two more settings are only available through `defaults`; the threshold takes effect on relaunch:
+The menu-bar icon toggles Flick on and off, controls Launch at Login, and toggles **Keep Pointer on Title Bar** (on by default): after a swipe moves a window, the pointer follows to the middle of its title bar if it ended up outside it, so the next swipe can start right away. Two more settings are only available through `defaults`; the threshold takes effect on relaunch:
 
 ```sh
 defaults write info.junz.flick SwipeThreshold -float 50      # finger travel a swipe needs, in scroll points

@@ -13,9 +13,12 @@ enum Defaults {
     static let enabled = "Enabled"
     static let threshold = "SwipeThreshold"
     static let duration = "AnimationDuration"
+    static let pointerOnTitleBar = "KeepPointerOnTitleBar"
 
     static func register() {
-        UserDefaults.standard.register(defaults: [enabled: true, threshold: 50.0, duration: 0.2])
+        UserDefaults.standard.register(defaults: [
+            enabled: true, threshold: 50.0, duration: 0.2, pointerOnTitleBar: true,
+        ])
     }
 }
 
@@ -29,6 +32,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let statusLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let enabledItem = NSMenuItem(title: "Enabled", action: #selector(toggleEnabled),
                                          keyEquivalent: "")
+    private let pointerItem = NSMenuItem(title: "Keep Pointer on Title Bar",
+                                         action: #selector(togglePointer), keyEquivalent: "")
     private let loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLogin),
                                        keyEquivalent: "")
 
@@ -50,8 +55,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(statusLine)
         menu.addItem(.separator())
         enabledItem.target = self
+        pointerItem.target = self
         loginItem.target = self
         menu.addItem(enabledItem)
+        menu.addItem(pointerItem)
         menu.addItem(loginItem)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Flick", action: #selector(NSApplication.terminate(_:)),
@@ -62,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         enabledItem.state = UserDefaults.standard.bool(forKey: Defaults.enabled) ? .on : .off
+        pointerItem.state = UserDefaults.standard.bool(forKey: Defaults.pointerOnTitleBar) ? .on : .off
         loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
     }
 
@@ -119,15 +127,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Window-menu commands act on the frontmost app's main window, and a
         // window moved to another display should come along to the front;
         // minimizing needs no focus, and raising first would only flash it.
-        if direction != .down || command { target.focus() }
+        let staysOnScreen = direction != .down || command
+        if staysOnScreen { target.focus() }
         let logger = logger
         do {
             let arrangement = try decide()
             logger.info("\(name, privacy: .public): \(arrangement.summary, privacy: .public)")
             let duration = UserDefaults.standard.double(forKey: Defaults.duration)
+            let keepPointer = staysOnScreen
+                && UserDefaults.standard.bool(forKey: Defaults.pointerOnTitleBar)
             worker.async {
                 do {
                     try FlickCore.perform(arrangement, duration: duration)
+                    if keepPointer { keepPointerOnTitleBar(of: target) }
                 } catch {
                     logger.error("\(name, privacy: .public): \(String(describing: error), privacy: .public)")
                     DispatchQueue.main.async { NSSound.beep() }
@@ -145,6 +157,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let enabled = !UserDefaults.standard.bool(forKey: Defaults.enabled)
         UserDefaults.standard.set(enabled, forKey: Defaults.enabled)
         tap?.isEnabled = enabled
+    }
+
+    @objc private func togglePointer() {
+        let defaults = UserDefaults.standard
+        defaults.set(!defaults.bool(forKey: Defaults.pointerOnTitleBar), forKey: Defaults.pointerOnTitleBar)
     }
 
     @objc private func toggleLogin() {

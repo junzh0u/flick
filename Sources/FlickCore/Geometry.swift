@@ -152,6 +152,12 @@ public func displayMove(window: CGRect, _ step: DisplayStep, displays: [Display]
                      target: proportionalFrame(window, from: from, to: to))
 }
 
+/// Where to put the pointer after arranging a window whose title-bar band is
+/// `band`: its centre, or nil when the pointer is already in it.
+public func pointerTarget(_ pointer: CGPoint, titleBar band: CGRect) -> CGPoint? {
+    band.contains(pointer) ? nil : CGPoint(x: band.midX.rounded(), y: band.midY.rounded())
+}
+
 /// The title-bar band of a window at `window`. Traffic lights sit centred in
 /// the title bar, unified toolbar or tab strip, whichever the window has, so
 /// the band reaches twice as far below the window's top as the close button's

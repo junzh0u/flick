@@ -153,5 +153,12 @@ public struct AppWindow: @unchecked Sendable {
     }
 
     public var frame: CGRect? { FlickCore.frame(of: window) }
+
+    /// The window's title-bar band, where swipes start (see titleBarBand).
+    public var titleBar: CGRect? {
+        guard let frame else { return nil }
+        let close = element(window, kAXCloseButtonAttribute).flatMap { FlickCore.frame(of: $0) }
+        return titleBarBand(window: frame, closeButton: close)
+    }
     public var title: String? { FlickCore.title(window) }
 }
