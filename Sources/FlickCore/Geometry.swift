@@ -117,6 +117,15 @@ public func usableArea(of display: Display, stages: [CGRect]?) throws(PlacementE
     return usable
 }
 
+/// Where `action` puts a window now at `window`: the matching part of its
+/// display's usable area (see usableArea). With Stage Manager off, macOS's own
+/// command does the arranging; this is where it lands short of any margins
+/// macOS adds between tiled windows.
+public func actionFrame(_ action: Action, window: CGRect, displays: [Display],
+                        stages: [CGRect]?) throws(PlacementError) -> CGRect {
+    action.frame(in: try usableArea(of: try display(of: window, in: displays), stages: stages))
+}
+
 /// Where `action` puts a window now at `window` with Stage Manager on: the
 /// matching part of its display's stage.
 public func placement(for action: Action, window: CGRect, displays: [Display],

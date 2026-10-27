@@ -3,20 +3,55 @@ import FlickCore
 import os
 import ServiceManagement
 
-/// Which arrangement each swipe performs, on a title bar or with ⌘ held
-/// anywhere in a window. Swiping down instead minimizes, or with ⌘, moves the
-/// window to the next display.
-let actions: [SwipeDirection: Action] = [.up: .fill, .left: .left, .right: .right]
+/// What a swipe does: on a title bar, or with ⌘ held anywhere in a window,
+/// ↑ fills and ← → split; ↓ minimizes, or with ⌘, moves the window to the
+/// next display.
+enum Plan {
+    case arrange(Action)
+    case minimize
+    case nextDisplay
+
+    init(_ direction: SwipeDirection, command: Bool) {
+        switch direction {
+        case .up: self = .arrange(.fill)
+        case .left: self = .arrange(.left)
+        case .right: self = .arrange(.right)
+        case .down: self = command ? .nextDisplay : .minimize
+        }
+    }
+
+    var name: String {
+        switch self {
+        case .arrange(let action): action.rawValue
+        case .minimize: "minimize"
+        case .nextDisplay: "next display"
+        }
+    }
+
+    /// The SF Symbol its preview shows.
+    var symbol: String {
+        switch self {
+        case .arrange(.fill): "rectangle.inset.filled"
+        case .arrange(.left): "rectangle.lefthalf.inset.filled"
+        case .arrange(.right): "rectangle.righthalf.inset.filled"
+        case .arrange(.top): "rectangle.tophalf.inset.filled"
+        case .arrange(.bottom): "rectangle.bottomhalf.inset.filled"
+        case .minimize: "minus"
+        case .nextDisplay: "rectangle.on.rectangle"
+        }
+    }
+}
 
 enum Defaults {
     static let enabled = "Enabled"
     static let threshold = "SwipeThreshold"
     static let duration = "AnimationDuration"
     static let pointerOnTitleBar = "KeepPointerOnTitleBar"
+    static let previews = "ShowPreviews"
 
     static func register() {
         UserDefaults.standard.register(defaults: [
-            enabled: true, threshold: 50.0, duration: 0.2, pointerOnTitleBar: true,
+            enabled: true, threshold: 50.0, duration: 0.2, pointerOnTitleBar: true, previews: true,
         ])
     }
 }
@@ -28,8 +63,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private var tap: SwipeTap?
     private var permissionTimer: Timer?
+    private let preview = PreviewOverlay()
     private let statusLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let enabledItem = NSMenuItem(title: "Enabled", action: #selector(toggleEnabled),
+                                         keyEquivalent: "")
+    private let previewItem = NSMenuItem(title: "Show Previews", action: #selector(togglePreviews),
                                          keyEquivalent: "")
     private let pointerItem = NSMenuItem(title: "Keep Pointer on Title Bar",
                                          action: #selector(togglePointer), keyEquivalent: "")
@@ -54,9 +92,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(statusLine)
         menu.addItem(.separator())
         enabledItem.target = self
+        previewItem.target = self
         pointerItem.target = self
         loginItem.target = self
         menu.addItem(enabledItem)
+        menu.addItem(previewItem)
         menu.addItem(pointerItem)
         menu.addItem(loginItem)
         menu.addItem(.separator())
@@ -68,6 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         enabledItem.state = UserDefaults.standard.bool(forKey: Defaults.enabled) ? .on : .off
+        previewItem.state = UserDefaults.standard.bool(forKey: Defaults.previews) ? .on : .off
         pointerItem.state = UserDefaults.standard.bool(forKey: Defaults.pointerOnTitleBar) ? .on : .off
         loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
     }
@@ -94,9 +135,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func startTap() {
         let defaults = UserDefaults.standard
-        let tap = SwipeTap(threshold: defaults.double(forKey: Defaults.threshold)) { [weak self] in
-            self?.swiped($0, $1, command: $2)
-        }
+        let tap = SwipeTap(threshold: defaults.double(forKey: Defaults.threshold),
+                           onProgress: { [weak self] in self?.previewSwipe($0, $1, command: $2) },
+                           onSwipe: { [weak self] in self?.swiped($0, $1, command: $2) })
         tap.isEnabled = defaults.bool(forKey: Defaults.enabled)
         if tap.start() {
             self.tap = tap
@@ -108,24 +149,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// Shows where the swipe in progress would put `target`, or hides the
+    /// preview when `direction` is nil.
+    private func previewSwipe(_ target: AppWindow?, _ direction: SwipeDirection?, command: Bool) {
+        guard let target, let direction,
+              UserDefaults.standard.bool(forKey: Defaults.previews),
+              let window = target.frame else {
+            preview.hide()
+            return
+        }
+        let plan = Plan(direction, command: command)
+        let stages = stageManagerEnabled() ? StageWatcher.shared.frames(waitingUpTo: 0) : nil
+        let frame: CGRect
+        do {
+            switch plan {
+            case .arrange(let action):
+                frame = try actionFrame(action, window: window, displays: currentDisplays(),
+                                        stages: stages)
+            case .nextDisplay:
+                frame = try displayMove(window: window, .next, displays: currentDisplays(),
+                                        stages: stages).target
+            case .minimize:
+                frame = CGRect(x: window.midX - 70, y: window.midY - 70, width: 140, height: 140)
+            }
+        } catch {
+            preview.hide()
+            return
+        }
+        preview.show(frame, symbol: plan.symbol)
+    }
+
     private func swiped(_ target: AppWindow, _ direction: SwipeDirection, command: Bool) {
-        let name: String
+        let plan = Plan(direction, command: command)
+        let name = plan.name
         let decide: () throws(ArrangeError) -> Arrangement
-        if command && direction == .down {
-            name = "next display"
+        switch plan {
+        case .nextDisplay:
             decide = { () throws(ArrangeError) in try arrangement(.next, for: target, stageWait: 0.1) }
-        } else if direction == .down {
-            name = "minimize"
+        case .minimize:
             decide = { minimizing(target) }
-        } else {
-            guard let action = actions[direction] else { return }
-            name = action.rawValue
+        case .arrange(let action):
             decide = { () throws(ArrangeError) in try arrangement(action, for: target, stageWait: 0.1) }
         }
         // Window-menu commands act on the frontmost app's main window, and a
         // window moved to another display should come along to the front;
         // minimizing needs no focus, and raising first would only flash it.
-        let staysOnScreen = direction != .down || command
+        let staysOnScreen: Bool
+        if case .minimize = plan { staysOnScreen = false } else { staysOnScreen = true }
         if staysOnScreen { target.focus() }
         let logger = logger
         do {
@@ -156,6 +226,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let enabled = !UserDefaults.standard.bool(forKey: Defaults.enabled)
         UserDefaults.standard.set(enabled, forKey: Defaults.enabled)
         tap?.isEnabled = enabled
+    }
+
+    @objc private func togglePreviews() {
+        let defaults = UserDefaults.standard
+        defaults.set(!defaults.bool(forKey: Defaults.previews), forKey: Defaults.previews)
     }
 
     @objc private func togglePointer() {

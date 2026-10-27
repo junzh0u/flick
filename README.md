@@ -16,7 +16,7 @@ Displays are ordered left to right, wrapping around. A moved window keeps its po
 
 With Stage Manager off, Flick presses macOS's own Window-menu commands, so windows tile exactly as they would from the menu. With it on, those commands would cover the strip of recent apps, so Flick instead moves the window into the display's *stage*, the area beside the strip where macOS itself places new windows, and eases it there over 0.2 s the way native tiling animates.
 
-The swipe is decided when your fingers lift, so you can still change direction or back out mid-swipe. Every event of a swipe Flick takes, including its momentum, is swallowed, so the window never scrolls; with ⌘ held, that includes ⌘-scrolling within windows. Swipes that start elsewhere, and scrolls with ⌥, ⌃ or ⇧ held, pass through untouched.
+The swipe is decided when your fingers lift, so you can still change direction or back out mid-swipe. Until then a frosted preview shows where the window will go, with a symbol for the action, and follows the swipe as it changes direction. Every event of a swipe Flick takes, including its momentum, is swallowed, so the window never scrolls; with ⌘ held, that includes ⌘-scrolling within windows. Swipes that start elsewhere, and scrolls with ⌥, ⌃ or ⇧ held, pass through untouched.
 
 ## Install
 
@@ -32,7 +32,7 @@ The bundle is signed with `flick-local`, a self-signed code-signing certificate 
 
 ## Settings
 
-The menu-bar icon toggles Flick on and off, controls Launch at Login, and toggles **Keep Pointer on Title Bar** (on by default): after a swipe moves a window, the pointer follows to the middle of its title bar if it ended up outside it, so the next swipe can start right away. ⌘ swipes leave the pointer where it is, since they work anywhere in the window. Two more settings are only available through `defaults`; the threshold takes effect on relaunch:
+The menu-bar icon toggles Flick on and off, controls Launch at Login, toggles **Show Previews** (on by default), and toggles **Keep Pointer on Title Bar** (on by default): after a swipe moves a window, the pointer follows to the middle of its title bar if it ended up outside it, so the next swipe can start right away. ⌘ swipes leave the pointer where it is, since they work anywhere in the window. Two more settings are only available through `defaults`; the threshold takes effect on relaunch:
 
 ```sh
 defaults write info.junz.flick SwipeThreshold -float 50      # finger travel a swipe needs, in scroll points

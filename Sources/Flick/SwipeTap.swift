@@ -20,11 +20,19 @@ final class SwipeTap {
     /// The window ⌘ swipes go to until ⌘ is released.
     private var commandTarget: AppWindow?
     private var port: CFMachPort?
+    private let onProgress: (AppWindow?, SwipeDirection?, _ command: Bool) -> Void
     private let onSwipe: (AppWindow, SwipeDirection, _ command: Bool) -> Void
+    /// The direction last reported to onProgress.
+    private var reported: SwipeDirection?
     private let logger = Logger(subsystem: "info.junz.flick", category: "gesture")
 
-    init(threshold: Double, onSwipe: @escaping (AppWindow, SwipeDirection, _ command: Bool) -> Void) {
+    /// `onProgress` hears the way the swipe in progress would go whenever it
+    /// changes, nil once it ends or falls short; `onSwipe`, each swipe made.
+    init(threshold: Double,
+         onProgress: @escaping (AppWindow?, SwipeDirection?, _ command: Bool) -> Void,
+         onSwipe: @escaping (AppWindow, SwipeDirection, _ command: Bool) -> Void) {
         recognizer = SwipeRecognizer(threshold: threshold)
+        self.onProgress = onProgress
         self.onSwipe = onSwipe
     }
 
@@ -92,6 +100,14 @@ final class SwipeTap {
                 commandTarget = target
             }
             return target != nil
+        }
+
+        let pending = recognizer.pending
+        if pending != reported {
+            reported = pending
+            let (target, command) = (target, command)
+            // Outside the callback, which must return quickly.
+            Task { @MainActor in self.onProgress(target, pending, command) }
         }
 
         switch verdict {

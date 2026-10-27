@@ -70,6 +70,20 @@ private let momentum: [(ScrollPhase, MomentumPhase, Double, Double)] = [
         #expect(Array(verdicts.suffix(4)) == [.swallow, .swallow, .swallow, .pass])
     }
 
+    @Test func pendingFollowsTheSwipeUntilItEnds() {
+        var r = SwipeRecognizer(threshold: 50)
+        let events: [(ScrollPhase, Double, Double)] = [
+            (.mayBegin, 0, 0), (.began, -30, 0), (.changed, -30, 0), (.changed, 0, -80),
+            (.changed, 0, 0), (.ended, 0, 0),
+        ]
+        var seen: [SwipeDirection?] = []
+        for (phase, dx, dy) in events {
+            _ = r.handle(phase: phase, momentum: .none, deltaX: dx, deltaY: dy, inverted: true) { true }
+            seen.append(r.pending)
+        }
+        #expect(seen == [nil, nil, .left, .up, .up, nil])
+    }
+
     @Test func cancelledGestureNeverFires() {
         var r = SwipeRecognizer(threshold: 50)
         let (verdicts, _) = feed(&r, onTitleBar: true, [
@@ -99,6 +113,12 @@ private let momentum: [(ScrollPhase, MomentumPhase, Double, Double)] = [
                           visible: CGRect(x: 0, y: 33, width: 1728, height: 1084), fps: 120)
     let external = Display(frame: CGRect(x: 1728, y: -200, width: 2560, height: 1440),
                            visible: CGRect(x: 1728, y: -175, width: 2560, height: 1415), fps: 60)
+
+    @Test func actionFrameUsesTheVisibleFrameWithStageManagerOff() throws {
+        let window = CGRect(x: 100, y: 100, width: 500, height: 500)
+        #expect(try actionFrame(.right, window: window, displays: [display, external], stages: nil)
+            == CGRect(x: 864, y: 33, width: 864, height: 1084))
+    }
 
     @Test func halvesSplitAnOddLengthWithoutOverlap() {
         let r = CGRect(x: 10, y: 20, width: 101, height: 51)

@@ -69,6 +69,13 @@ public struct SwipeRecognizer: Sendable {
         self.threshold = threshold
     }
 
+    /// The way the swipe in progress would fire if the fingers lifted now, or
+    /// nil when no swipe is in progress or it hasn't travelled far enough.
+    public var pending: SwipeDirection? {
+        guard case .tracking(let x, let y) = state else { return nil }
+        return classify(x: x, y: y)
+    }
+
     /// Feeds one trackpad scroll event. `deltaX` and `deltaY` are its
     /// scrolling deltas and `inverted` its isDirectionInvertedFromDevice
     /// ("natural scrolling"). `startsOnTarget` is asked once per gesture, on
