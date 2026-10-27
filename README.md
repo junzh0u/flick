@@ -11,9 +11,9 @@ A menu-bar app for macOS that fills, splits, moves or minimizes a window when yo
 | pinch in | minimize to the Dock | minimize to the strip |
 | ⌘⇧ swipe ← / → | split the display with the window behind: this one on that side | split the stage with the window behind |
 
-While ⌘ stays held, later ⌘ gestures keep going to the window the first one hit, wherever the pointer is, so you can split a window, send it to the next display and fill it there in one go. Releasing ⌘ lets go of it. Repeating a split in the same hold cycles the window through half, two thirds and one third of that side, as Rectangle does; with Stage Manager off, the thirds take the display's visible frame, since macOS's Window menu has none.
+While ⌘ stays held, later ⌘ gestures keep going to the window the first one hit, wherever the pointer is, so you can split a window, send it to the next display and fill it there in one go. Releasing ⌘ lets go of it. Repeating a split in the same hold cycles the window through half, one third and two thirds of that side; with Stage Manager off, the thirds take the display's visible frame, since macOS's Window menu has none.
 
-Adding ⇧ makes a split a pair: the window takes its side and the window behind it — the next one on the stage, or with Stage Manager off, on the display — takes the rest, both easing there together. Pairs cycle the same way, and turning a split into a pair keeps its size, so ⌘← ⌘← ⌘⇧← gives the window two thirds and the one behind it the last third. With Stage Manager on, only windows already sharing the stage pair up.
+Adding ⇧ makes a split a pair: the window takes its side and the window behind it — the next one on the stage, or with Stage Manager off, on the display — takes the rest, both easing there together. Pairs cycle the same way, and turning a split into a pair keeps its size, so ⌘← ⌘← ⌘⇧← gives the window one third and the one behind it the other two. With Stage Manager on, only windows already sharing the stage pair up.
 
 Displays are ordered left to right, wrapping around. A moved window keeps its position and size relative to the area windows are arranged in — the visible frame, or with Stage Manager on, the stage — so a filled window stays filled, a left half stays a left half, and a window in the top-right third stays there.
 

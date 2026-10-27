@@ -155,12 +155,12 @@ public func pairFrames(_ side: Action, fraction: Double, in area: CGRect) -> (CG
     (side.frame(in: area, fraction: fraction), side.opposite.frame(in: area, fraction: 1 - fraction))
 }
 
-/// Repeating a split while ⌘ stays held cycles the window through half, two
-/// thirds and one third of the area on that side, as Rectangle does. Turning a
-/// split into a pair, or back, keeps its size, so a window can be sized first
-/// and the window behind it then given the rest.
+/// Repeating a split while ⌘ stays held cycles the window through half, one
+/// third and two thirds of the area on that side. Turning a split into a
+/// pair, or back, keeps its size, so a window can be sized first and the
+/// window behind it then given the rest.
 public struct SplitCycle: Sendable {
-    public static let fractions: [Double] = [1.0 / 2, 2.0 / 3, 1.0 / 3]
+    public static let fractions: [Double] = [1.0 / 2, 1.0 / 3, 2.0 / 3]
 
     private var hold: Int?
     private var action: Action?

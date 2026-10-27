@@ -171,7 +171,7 @@ private let momentum: [(ScrollPhase, MomentumPhase, Double, Double)] = [
             seen.append(cycle.fraction(.left, hold: 1))
             cycle.performed(.left, hold: 1)
         }
-        let expected: [Double] = [1.0 / 2, 2.0 / 3, 1.0 / 3, 1.0 / 2]
+        let expected: [Double] = [1.0 / 2, 1.0 / 3, 2.0 / 3, 1.0 / 2]
         #expect(seen == expected)
         #expect(cycle.fraction(.left, hold: 2) == 1.0 / 2)
         #expect(cycle.fraction(.right, hold: 1) == 1.0 / 2)
@@ -184,7 +184,7 @@ private let momentum: [(ScrollPhase, MomentumPhase, Double, Double)] = [
             seen.append(cycle.fraction(.left, paired: paired, hold: 1))
             cycle.performed(.left, paired: paired, hold: 1)
         }
-        let expected: [Double] = [1.0 / 2, 2.0 / 3, 2.0 / 3, 1.0 / 3, 1.0 / 3]
+        let expected: [Double] = [1.0 / 2, 1.0 / 3, 1.0 / 3, 2.0 / 3, 2.0 / 3]
         #expect(seen == expected)
     }
 
