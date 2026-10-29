@@ -23,7 +23,7 @@ The swipe is decided when your fingers lift, so you can still change direction o
 
 ## Install
 
-Requires macOS 14 or later and Xcode (or its command-line tools) for Swift 6.
+Requires macOS 26 or later and Xcode (or its command-line tools) for Swift 6.2.
 
 ```sh
 ./build.sh --install
