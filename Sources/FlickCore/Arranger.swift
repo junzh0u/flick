@@ -46,7 +46,7 @@ public func arrangement(_ action: Action, fraction: Double = 0.5, for target: Ap
     let stageManager = stageManagerEnabled()
     if !stageManager && (action == .fill || fraction == 0.5) {
         let path = (["Window"] + action.menuPath).joined(separator: " → ")
-        guard let item = windowMenuItem(target.app, path: action.menuPath) else {
+        guard let item = windowMenuItem(target.app, selector: action.menuSelector) else {
             throw ArrangeError(description: "\(name) has no \(path)")
         }
         return Arrangement(step: .press(item), summary: "\(name): \(path)")

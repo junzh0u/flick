@@ -4,8 +4,19 @@ import CoreGraphics
 public enum Action: String, CaseIterable, Sendable {
     case fill, left, right, top, bottom
 
-    /// macOS's own Window-menu item for this arrangement, pressed when Stage
-    /// Manager is off.
+    /// The action of macOS's own Window-menu item for this arrangement,
+    /// pressed when Stage Manager is off.
+    public var menuSelector: String {
+        switch self {
+        case .fill: "_zoomFill:"
+        case .left: "_zoomLeft:"
+        case .right: "_zoomRight:"
+        case .top: "_zoomTop:"
+        case .bottom: "_zoomBottom:"
+        }
+    }
+
+    /// That item's place in the menu, in English, for messages.
     public var menuPath: [String] {
         switch self {
         case .fill: ["Fill"]

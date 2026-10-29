@@ -78,24 +78,29 @@ func windowID(of window: AXUIElement) -> CGWindowID? {
 
 // MARK: Window menu
 
-/// The first item of the app's Window menu whose title matches.
-func windowMenuItem(_ app: AXUIElement, where matches: (String) -> Bool) -> AXUIElement? {
-    guard let menuBar = element(app, kAXMenuBarAttribute),
-          let menu = children(menuBar).first(where: { title($0) == "Window" })
-              .flatMap({ children($0).first }) else { return nil }
-    return children(menu).first(where: { title($0).map(matches) ?? false })
-}
-
-/// The item at `path` under the app's Window menu, each title matched exactly.
-func windowMenuItem(_ app: AXUIElement, path: [String]) -> AXUIElement? {
-    guard let first = path.first,
-          var item = windowMenuItem(app, where: { $0 == first }) else { return nil }
-    for name in path.dropFirst() {
-        guard let submenu = children(item).first,
-              let next = children(submenu).first(where: { title($0) == name }) else { return nil }
-        item = next
+/// The item of the app's Window menu, or of one of its submenus, that sends
+/// `selector`. AppKit gives each menu item the name of its action as its
+/// Accessibility identifier, which unlike its title doesn't follow the app's
+/// language; the Window menu is the one with Fill.
+func windowMenuItem(_ app: AXUIElement, selector: String) -> AXUIElement? {
+    func identifier(_ item: AXUIElement) -> String? { string(item, kAXIdentifierAttribute) }
+    guard let menuBar = element(app, kAXMenuBarAttribute) else { return nil }
+    // The Window menu is usually last but for Help.
+    for barItem in children(menuBar).reversed() {
+        guard let menu = children(barItem).first else { continue }
+        let items = children(menu)
+        let ids = items.map(identifier)
+        guard ids.contains(Action.fill.menuSelector) else { continue }
+        if let i = ids.firstIndex(of: selector) { return items[i] }
+        for item in items {
+            guard let submenu = children(item).first else { continue }
+            if let found = children(submenu).first(where: { identifier($0) == selector }) {
+                return found
+            }
+        }
+        return nil
     }
-    return item
+    return nil
 }
 
 // MARK: Windows
