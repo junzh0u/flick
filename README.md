@@ -23,7 +23,7 @@ The swipe is decided when your fingers lift, so you can still change direction o
 
 ## Install
 
-Requires macOS 26 or later and Xcode (or its command-line tools) for Swift 6.2.
+Requires macOS 26 or later and Xcode for Swift 6.2. The command-line tools alone also build Flick, but without its icon.
 
 ```sh
 ./build.sh --install
@@ -101,4 +101,4 @@ swift test
 Tests/test-cli.zsh
 ```
 
-The gesture recognizer and geometry live in `FlickCore` and are unit-tested; `Tests/test-cli.zsh` checks the command line's argument handling. The event tap, Accessibility and window movement need a real session; use the `probe` and `--dry-run` commands above to check them.
+The gesture recognizer and geometry live in `FlickCore` and are unit-tested; `Tests/test-cli.zsh` checks the command line's argument handling. The event tap, Accessibility and window movement need a real session; use the `probe` and `--dry-run` commands above to check them. The app icon is `Resources/AppIcon.icon`; edit it in Icon Composer, which ships with Xcode. `build.sh` compiles it with `actool`, also Xcode-only, so a build with just the command-line tools has no icon.

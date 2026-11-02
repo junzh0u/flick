@@ -57,8 +57,17 @@ swift build -c release --product Flick
 bin=$(swift build -c release --show-bin-path)/Flick
 
 rm -rf $app
-mkdir -p $app/Contents/MacOS
+mkdir -p $app/Contents/MacOS $app/Contents/Resources
 cp $bin $app/Contents/MacOS/Flick
+# The Icon Composer icon compiles to Assets.car, plus AppIcon.icns for Finder's
+# flat renditions. actool ships with Xcode only, so the command-line tools
+# build an app without an icon.
+if ! icon_log=$(xcrun actool Resources/AppIcon.icon --compile $app/Contents/Resources \
+        --app-icon AppIcon --platform macosx --minimum-deployment-target 26.0 \
+        --output-partial-info-plist .build/AppIcon.plist --errors --warnings 2>&1); then
+    print -u2 "$icon_log"
+    print -u2 "warning: actool failed, so Flick.app has no icon; it needs Xcode"
+fi
 cp Resources/Info.plist $app/Contents/Info.plist
 revision=$(git describe --always --dirty --abbrev=40 --match '' 2>/dev/null || print unknown)
 plutil -insert FlickSourceRevision -string $revision $app/Contents/Info.plist
