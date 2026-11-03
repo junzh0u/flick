@@ -61,10 +61,12 @@ mkdir -p $app/Contents/MacOS $app/Contents/Resources
 cp $bin $app/Contents/MacOS/Flick
 # The Icon Composer icon compiles to Assets.car, plus AppIcon.icns for Finder's
 # flat renditions. actool ships with Xcode only, so the command-line tools
-# build an app without an icon.
-if ! icon_log=$(xcrun actool Resources/AppIcon.icon --compile $app/Contents/Resources \
+# build an app without an icon. Every path is absolute: actool hands the work to
+# a long-lived agent that resolves relative paths against its own working
+# directory, wherever it was first started.
+if ! icon_log=$(xcrun actool $PWD/Resources/AppIcon.icon --compile $PWD/$app/Contents/Resources \
         --app-icon AppIcon --platform macosx --minimum-deployment-target 26.0 \
-        --output-partial-info-plist .build/AppIcon.plist --errors --warnings 2>&1); then
+        --output-partial-info-plist $PWD/.build/AppIcon.plist --errors --warnings 2>&1); then
     print -u2 "$icon_log"
     print -u2 "warning: actool failed, so Flick.app has no icon; it needs Xcode"
 fi
