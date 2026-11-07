@@ -5,9 +5,44 @@ import SwiftUI
 /// The settings window's contents.
 struct SettingsView: View {
     @ObservedObject var store: SettingsStore
+    @State private var trusted = AXIsProcessTrusted()
 
     var body: some View {
         Form {
+            Section {
+                HStack {
+                    if trusted {
+                        Label("Accessibility granted", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    } else {
+                        Label("Accessibility not granted", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Spacer()
+                        Button("Open System Settings") {
+                            NSWorkspace.shared.open(Self.accessibilityPane)
+                        }
+                    }
+                }
+            } header: {
+                Text("Permission")
+            } footer: {
+                if !trusted {
+                    Text("Flick needs Accessibility to watch the trackpad and move windows. Turn Flick on in the pane the button opens; gestures start as soon as it's on.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            // Accessibility has no change notification, so poll while it's
+            // missing, and recheck whenever the window comes forward in case it
+            // was revoked meanwhile.
+            .task(id: trusted) {
+                while !trusted && !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(1))
+                    trusted = AXIsProcessTrusted()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+                trusted = AXIsProcessTrusted()
+            }
             Section("Gestures") {
                 LabeledContent("Swipe distance") {
                     HStack {
@@ -77,6 +112,9 @@ struct SettingsView: View {
         .frame(width: 440)
         .fixedSize(horizontal: false, vertical: true)
     }
+
+    private static let accessibilityPane =
+        URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
 
     private var displayPath: String {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
