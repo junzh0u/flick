@@ -1,8 +1,8 @@
 #!/bin/zsh
 # Builds build/Flick.app; with --install, also replaces ~/Applications/Flick.app
-# and relaunches it.
+# and relaunches it; with --release, signs it for distribution and notarizes it.
 #
-#   ./build.sh [--install]
+#   ./build.sh [--install | --release]
 #
 # The bundle's FlickSourceRevision records the commit it was built from, with
 # "-dirty" for uncommitted changes, so an installer can tell when the installed
@@ -16,6 +16,20 @@
 # certificate leaf = H"..."` — which every rebuild still satisfies; an ad-hoc
 # signature would lose the grant on each rebuild. The identity needs no trust
 # setting: codesign signs with it and the requirement checks only the leaf hash.
+#
+# --release signs with the keychain's Developer ID Application identity instead,
+# with the hardened runtime and a secure timestamp, has Apple notarize the app,
+# staples the ticket, and leaves build/Flick-<version>.zip for a GitHub Release.
+# It refuses a dirty tree, so the zip matches a commit. notarytool reads its
+# credentials from the keychain profile $FLICK_NOTARY_PROFILE (default
+# flick-notary), stored once with:
+#
+#   xcrun notarytool store-credentials flick-notary \
+#       --apple-id <apple-id> --team-id <team-id> --password <app-specific-password>
+#
+# The hardened runtime needs no entitlements: the private WindowManagement
+# framework Flick dlopens is Apple-signed, which library validation allows, and
+# the event tap is gated by the Accessibility grant, not by an entitlement.
 set -euo pipefail
 cd ${0:A:h}
 
@@ -23,12 +37,33 @@ identity=flick-local
 app=build/Flick.app
 installed=$HOME/Applications/Flick.app
 
-install=
+install= release=
 case ${1:-} in
     '') ;;
     --install) install=1 ;;
-    *) print -u2 "usage: ./build.sh [--install]"; exit 2 ;;
+    --release) release=1 ;;
+    *) print -u2 "usage: ./build.sh [--install | --release]"; exit 2 ;;
 esac
+
+if [[ -n $release ]]; then
+    if [[ -n $(git status --porcelain) ]]; then
+        print -u2 "error: --release needs a clean tree, so the build matches a commit"
+        exit 1
+    fi
+    # Pick the identity by its SHA-1 hash: a name could match several certificates.
+    identity=$(security find-identity -v -p codesigning \
+        | awk '/"Developer ID Application: / { print $2; exit }')
+    if [[ -z $identity ]]; then
+        print -u2 "error: no Developer ID Application identity in the keychain; create one in"
+        print -u2 "Xcode → Settings → Accounts → Manage Certificates → + → Developer ID Application"
+        exit 1
+    fi
+    profile=${FLICK_NOTARY_PROFILE:-flick-notary}
+    if ! xcrun notarytool history --keychain-profile $profile &>/dev/null; then
+        print -u2 "error: no notarytool credentials in keychain profile $profile; see build.sh's header"
+        exit 1
+    fi
+fi
 
 function has_identity {
     security find-identity -p codesigning 2>/dev/null | grep -qF "\"$identity\""
@@ -75,12 +110,38 @@ revision=$(git describe --always --dirty --abbrev=40 --match '' 2>/dev/null || p
 plutil -insert FlickSourceRevision -string $revision $app/Contents/Info.plist
 print -n 'APPL????' > $app/Contents/PkgInfo
 
-if ! has_identity; then
-    print "Creating the $identity signing identity in the login keychain"
-    create_identity
+if [[ -n $release ]]; then
+    codesign --force --options runtime --timestamp --sign $identity $app
+    codesign --verify --strict --deep $app
+else
+    if ! has_identity; then
+        print "Creating the $identity signing identity in the login keychain"
+        create_identity
+    fi
+    codesign --force --sign $identity $app 2>&1 | { grep -v 'replacing existing signature' >&2 || true }
 fi
-codesign --force --sign $identity $app 2>&1 | { grep -v 'replacing existing signature' >&2 || true }
 print "Built $app"
+
+if [[ -n $release ]]; then
+    version=$(plutil -extract CFBundleShortVersionString raw $app/Contents/Info.plist)
+    zip=build/Flick-$version.zip
+    # notarytool takes a zip; ditto keeps the bundle's symlinks and metadata.
+    ditto -c -k --keepParent $app $zip
+    print "Submitting $zip for notarization"
+    result=$(xcrun notarytool submit $zip --keychain-profile $profile --wait --output-format json)
+    notary_status=$(plutil -extract status raw - <<< $result)
+    if [[ $notary_status != Accepted ]]; then
+        print -u2 "error: notarization $notary_status; the log says why:"
+        xcrun notarytool log $(plutil -extract id raw - <<< $result) --keychain-profile $profile >&2
+        exit 1
+    fi
+    # Staple the ticket so Gatekeeper accepts the app offline, then zip it again.
+    xcrun stapler staple $app
+    rm -f $zip
+    ditto -c -k --keepParent $app $zip
+    spctl --assess --type execute -vv $app
+    print "Notarized $zip"
+fi
 
 [[ -n $install ]] || exit 0
 for pid in $(pgrep -x Flick || true); do kill $pid; done
