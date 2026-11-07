@@ -23,15 +23,29 @@ The swipe is decided when your fingers lift, so you can still change direction o
 
 ## Install
 
-Requires macOS 26 or later and Xcode for Swift 6.2. The command-line tools alone also build Flick, but without its icon.
+Requires macOS 26 or later. Install with Homebrew:
+
+```sh
+brew install --cask junzh0u/tap/flick
+```
+
+Spell out `junzh0u/tap/flick`: Homebrew's own `flick` cask is an unrelated app. `brew upgrade` brings new versions; Flick doesn't update itself. Or download `Flick-<version>.zip` from the [latest release](https://github.com/junzh0u/flick/releases/latest), unzip it and move `Flick.app` to `/Applications`. Releases are signed with a Developer ID and notarized by Apple, so they open without a Gatekeeper warning.
+
+On first launch, grant Flick **Accessibility** under System Settings → Privacy & Security; it starts watching the trackpad as soon as the permission arrives. Turn on **Launch at Login** from its menu-bar icon, or with `launch-at-login on` (see [Command line](#command-line)).
+
+### From source
+
+Building needs Xcode for Swift 6.2. The command-line tools alone also build Flick, but without its icon.
 
 ```sh
 ./build.sh --install
 ```
 
-This builds `build/Flick.app`, copies it to `~/Applications`, and launches it. On first launch, grant Flick **Accessibility** under System Settings → Privacy & Security; it starts watching the trackpad as soon as the permission arrives. Turn on **Launch at Login** from its menu-bar icon, or with `launch-at-login on` (see [Command line](#command-line)).
+This builds `build/Flick.app`, copies it to `~/Applications`, and launches it.
 
-The bundle is signed with `flick-local`, a self-signed code-signing certificate `build.sh` creates in your login keychain on first run. macOS ties the Accessibility grant to that signature rather than to a specific build, so rebuilding keeps the permission; an ad-hoc signature would lose it on every build.
+The bundle is signed with `flick-local`, a self-signed code-signing certificate `build.sh` creates in your login keychain on first run. macOS ties the Accessibility grant to that signature rather than to a specific build, so rebuilding keeps the permission; an ad-hoc signature would lose it on every build. A release build carries a different signature, so switching between the two needs the grant again.
+
+To publish a release, run `./release.sh VERSION`: it signs with the keychain's Developer ID, notarizes, tags, and creates the GitHub Release; see its header and `build.sh`'s for the one-time setup.
 
 ## Settings
 
@@ -64,7 +78,7 @@ Two settings stay with each Mac instead: **Enabled**, the menu's quick on/off sw
 The app's executable also arranges the frontmost window once and exits, which helps for testing or for binding keyboard shortcuts:
 
 ```sh
-FLICK=~/Applications/Flick.app/Contents/MacOS/Flick
+FLICK=/Applications/Flick.app/Contents/MacOS/Flick    # ~/Applications from source
 $FLICK fill [--dry-run] [--duration SECONDS]
 $FLICK tile [--dry-run] [--duration SECONDS] left|right|top|bottom
 $FLICK pair [--dry-run] [--duration SECONDS] left|right
