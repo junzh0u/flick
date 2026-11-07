@@ -11,6 +11,9 @@ run: build stop-flick
 # Quit the build and go back to the installed Flick
 stop: stop-flick
     open /Applications/Flick.app
+    @# Any copy that asks about Launch at Login takes over the login item, as
+    @# the build does when its menu opens; asking from here takes it back.
+    @/Applications/Flick.app/Contents/MacOS/Flick launch-at-login >/dev/null
 
 [private]
 stop-flick:
