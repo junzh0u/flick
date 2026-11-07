@@ -10,12 +10,17 @@
 #
 #   plutil -extract FlickSourceRevision raw ~/Applications/Flick.app/Contents/Info.plist
 #
-# Signed with flick-local, a self-signed code-signing certificate this creates
-# in the login keychain once. macOS keys the Accessibility grant to the
-# signature's designated requirement — `identifier "info.junz.flick" and
-# certificate leaf = H"..."` — which every rebuild still satisfies; an ad-hoc
-# signature would lose the grant on each rebuild. The identity needs no trust
-# setting: codesign signs with it and the requirement checks only the leaf hash.
+# macOS keys the Accessibility grant to the signature's designated requirement,
+# which every rebuild must keep satisfying; an ad-hoc signature would lose the
+# grant on each rebuild. With a Developer ID Application identity in the
+# keychain, the build is signed with it and the hardened runtime, like a
+# release but without notarizing: its requirement names the team rather than
+# one certificate, so a local build shares the grant with an installed release
+# and can stand in for it (quit Flick, then open build/Flick.app). Without one,
+# it is signed with flick-local, a self-signed code-signing certificate this
+# creates in the login keychain once, whose requirement — `identifier
+# "info.junz.flick" and certificate leaf = H"..."` — pins its leaf hash; it
+# needs no trust setting.
 #
 # --release signs with the keychain's Developer ID Application identity instead,
 # with the hardened runtime and a secure timestamp, has Apple notarize the app,
@@ -33,7 +38,7 @@
 set -euo pipefail
 cd ${0:A:h}
 
-identity=flick-local
+local_identity=flick-local
 app=build/Flick.app
 installed=$HOME/Applications/Flick.app
 
@@ -45,15 +50,17 @@ case ${1:-} in
     *) print -u2 "usage: ./build.sh [--install | --release]"; exit 2 ;;
 esac
 
+# The Developer ID identity, by its SHA-1 hash: a name could match several
+# certificates.
+developer_id=$(security find-identity -v -p codesigning \
+    | awk '/"Developer ID Application: / { print $2; exit }')
+
 if [[ -n $release ]]; then
     if [[ -n $(git status --porcelain) ]]; then
         print -u2 "error: --release needs a clean tree, so the build matches a commit"
         exit 1
     fi
-    # Pick the identity by its SHA-1 hash: a name could match several certificates.
-    identity=$(security find-identity -v -p codesigning \
-        | awk '/"Developer ID Application: / { print $2; exit }')
-    if [[ -z $identity ]]; then
+    if [[ -z $developer_id ]]; then
         print -u2 "error: no Developer ID Application identity in the keychain; create one in"
         print -u2 "Xcode → Settings → Accounts → Manage Certificates → + → Developer ID Application"
         exit 1
@@ -66,7 +73,7 @@ if [[ -n $release ]]; then
 fi
 
 function has_identity {
-    security find-identity -p codesigning 2>/dev/null | grep -qF "\"$identity\""
+    security find-identity -p codesigning 2>/dev/null | grep -qF "\"$local_identity\""
 }
 
 # A self-signed code-signing certificate, imported with its key into the login
@@ -76,13 +83,13 @@ function create_identity {
     local tmp
     tmp=$(mktemp -d ${TMPDIR:-/tmp}/flick.XXXXXX)
     {
-        /usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj /CN=$identity \
+        /usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj /CN=$local_identity \
             -addext keyUsage=critical,digitalSignature \
             -addext extendedKeyUsage=critical,codeSigning \
             -keyout $tmp/key.pem -out $tmp/cert.pem 2>/dev/null
         /usr/bin/openssl pkcs12 -export -inkey $tmp/key.pem -in $tmp/cert.pem \
-            -out $tmp/identity.p12 -passout pass:$identity
-        security import $tmp/identity.p12 -P $identity -T /usr/bin/codesign >/dev/null
+            -out $tmp/identity.p12 -passout pass:$local_identity
+        security import $tmp/identity.p12 -P $local_identity -T /usr/bin/codesign >/dev/null
     } always {
         rm -rf -- $tmp
     }
@@ -111,14 +118,19 @@ plutil -insert FlickSourceRevision -string $revision $app/Contents/Info.plist
 print -n 'APPL????' > $app/Contents/PkgInfo
 
 if [[ -n $release ]]; then
-    codesign --force --options runtime --timestamp --sign $identity $app
+    codesign --force --options runtime --timestamp --sign $developer_id $app
     codesign --verify --strict --deep $app
+elif [[ -n $developer_id ]]; then
+    # No secure timestamp: only notarization needs one, and it takes a network
+    # round trip.
+    codesign --force --options runtime --timestamp=none --sign $developer_id $app 2>&1 \
+        | { grep -v 'replacing existing signature' >&2 || true }
 else
     if ! has_identity; then
-        print "Creating the $identity signing identity in the login keychain"
+        print "Creating the $local_identity signing identity in the login keychain"
         create_identity
     fi
-    codesign --force --sign $identity $app 2>&1 | { grep -v 'replacing existing signature' >&2 || true }
+    codesign --force --sign $local_identity $app 2>&1 | { grep -v 'replacing existing signature' >&2 || true }
 fi
 print "Built $app"
 

@@ -41,9 +41,11 @@ Building needs Xcode for Swift 6.2. The command-line tools alone also build Flic
 ./build.sh --install
 ```
 
-This builds `build/Flick.app`, copies it to `~/Applications`, and launches it.
+This builds `build/Flick.app`, copies it to `~/Applications`, and launches it. `just check` builds with warnings as errors and runs the tests; `just --list` shows the rest.
 
-The bundle is signed with `flick-local`, a self-signed code-signing certificate `build.sh` creates in your login keychain on first run. macOS ties the Accessibility grant to that signature rather than to a specific build, so rebuilding keeps the permission; an ad-hoc signature would lose it on every build. A release build carries a different signature, so switching between the two needs the grant again.
+The bundle is signed with `flick-local`, a self-signed code-signing certificate `build.sh` creates in your login keychain on first run. macOS ties the Accessibility grant to that signature rather than to a specific build, so rebuilding keeps the permission; an ad-hoc signature would lose it on every build. A release carries a different signature, so switching between the two needs the grant again — unless your keychain has a Developer ID Application identity: `build.sh` then signs with it, and the build shares an installed release's grant.
+
+To try a change next to an installed release, `just run` builds and runs `build/Flick.app` in place of the running Flick, and `just stop` goes back to `/Applications/Flick.app`.
 
 To publish a release, run `./release.sh VERSION`: it signs with the keychain's Developer ID, notarizes, tags, and creates the GitHub Release; see its header and `build.sh`'s for the one-time setup.
 
